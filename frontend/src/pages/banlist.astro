@@ -1,0 +1,34 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Ban list">
+  <h1 class="mb-1 text-lg font-semibold">Banned for disorderly conduct</h1>
+  <p class="mb-4 text-sm text-slate-500">
+    Public and in-app on purpose. Anyone found to have filed a fabricated report lands here too — reporting has to
+    cut both ways, or it becomes a weapon against honest borrowers and lenders.
+  </p>
+  <div id="list"></div>
+
+  <script>
+    import { fetchJson } from '../lib/api.js';
+    import { $, esc, spinner, empty, relative } from '../lib/ui.js';
+
+    $('#list').innerHTML = spinner();
+    fetchJson('/reports/banlist').then(({ banned }) => {
+      $('#list').innerHTML = banned.length
+        ? `<ul class="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+             ${banned
+               .map(
+                 (b) => `<li class="p-3 text-sm">
+                   <p class="font-medium">${esc(b.name)} <span class="text-slate-400">@${esc(b.username)}</span></p>
+                   <p class="text-slate-600">${esc(b.reason || 'Disorderly conduct')}</p>
+                   <p class="text-xs text-slate-400">${esc(relative(b.at))}</p>
+                 </li>`,
+               )
+               .join('')}
+           </ul>`
+        : empty('Nobody is banned right now.');
+    });
+  </script>
+</Base>

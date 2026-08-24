@@ -1,0 +1,66 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Sign up">
+  <h1 class="mb-1 text-lg font-semibold">Create your account</h1>
+  <p class="mb-4 text-sm text-slate-500">
+    Only UTG students can join — verification runs off your university email address, which is also what keeps
+    the marketplace non-anonymous.
+  </p>
+
+  <form id="form" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+    <input name="name" required placeholder="Full name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <input name="username" required placeholder="Username (how buyers find you)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <input name="email" type="email" required placeholder="you@utg.edu.gm" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <input name="password" type="password" required minlength="8" placeholder="Password (8+ characters)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <input name="whatsapp" placeholder="WhatsApp number (optional — used for the Message Seller button)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+
+    <label class="block text-sm font-medium">Your school</label>
+    <p class="-mt-2 text-xs text-slate-500">This becomes your default view, so the app opens on what is relevant to you.</p>
+    <select name="schoolCode" required id="schools" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+
+    <button class="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white">Create account</button>
+    <p id="error" class="text-sm text-red-600"></p>
+  </form>
+
+  <div id="verify" class="mt-4"></div>
+
+  <script>
+    import { get, post, auth } from '../lib/api.js';
+    import { $, esc } from '../lib/ui.js';
+
+    get('/schools').then(({ data }) => {
+      $('#schools').innerHTML = data.schools
+        .map((s) => `<option value="${esc(s.code)}">${esc(s.code)} — ${esc(s.name)}</option>`)
+        .join('');
+    });
+
+    $('#form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('#error').textContent = '';
+      const body = Object.fromEntries(new FormData(e.target));
+      try {
+        const res = await post('/auth/signup', body);
+        // With no mail server in the MVP, the verification link is handed back
+        // directly so the flow can be walked end to end.
+        $('#verify').innerHTML = res.verifyToken
+          ? `<div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm">
+               <p class="font-medium text-teal-900">${esc(res.message)}</p>
+               <p class="mt-1 text-xs text-teal-800">No mail server is wired up in this build, so here is the link that email would have contained:</p>
+               <button id="do-verify" class="mt-2 rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-medium text-white">Verify my email</button>
+             </div>`
+          : `<p class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">${esc(res.message)}</p>`;
+
+        $('#do-verify')?.addEventListener('click', async () => {
+          const v = await post('/auth/verify', { token: res.verifyToken });
+          auth.signIn(v.token, { ...v.user, email: body.email });
+          location.href = '/';
+        });
+        $('#form').reset();
+      } catch (err) {
+        $('#error').textContent = err.message;
+      }
+    });
+  </script>
+</Base>

@@ -1,0 +1,135 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Listing" active="market">
+  <div id="view"></div>
+
+  <script>
+    import { fetchJson, post, auth, invalidate } from '../lib/api.js';
+    import { $, esc, money, qs, spinner, toast, relative } from '../lib/ui.js';
+
+    const id = qs('id');
+    const me = auth.user;
+
+    async function render() {
+      $('#view').innerHTML = spinner();
+      const { listing: l } = await fetchJson(`/listings/${id}`);
+      const mine = me && me.id === l.seller.id;
+
+      $('#view').innerHTML = `
+        <img src="${esc(l.imageUrl)}" alt="${esc(l.title)}" width="600" height="600" decoding="async"
+             class="mb-4 aspect-square w-full rounded-xl object-cover" />
+
+        <div class="flex items-start gap-3">
+          <div class="flex-1">
+            <h1 class="text-lg font-semibold leading-snug">${esc(l.title)}</h1>
+            <p class="mt-1 text-xl font-bold text-teal-700">${esc(money(l.price, l.currency, l.priceUnit))}</p>
+          </div>
+          ${
+            me && !mine
+              ? `<button id="save" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium">${l.saved ? 'Saved ✓' : 'Save'}</button>`
+              : ''
+          }
+        </div>
+
+        <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+          <span class="rounded bg-slate-100 px-2 py-0.5">${esc(l.section)}</span>
+          <span class="rounded bg-slate-100 px-2 py-0.5">${esc(l.category.replace(/-/g, ' '))}</span>
+          ${l.school ? `<span class="rounded bg-slate-100 px-2 py-0.5">${esc(l.school.code)}</span>` : ''}
+          <span>${l.views} views · ${l.saves} saved</span>
+        </div>
+
+        ${l.description ? `<p class="mt-3 whitespace-pre-line text-sm text-slate-700">${esc(l.description)}</p>` : ''}
+
+        ${
+          l.pickupPoint
+            ? `<p class="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm">
+                 <strong>Pickup:</strong> ${esc(l.pickupPoint)}
+                 <span class="block text-xs text-slate-500">Agreed meeting point — no guessing where to meet.</span>
+               </p>`
+            : ''
+        }
+
+        ${
+          l.section === 'rent'
+            ? `<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                 <p class="font-medium">Rent &amp; Borrow safeguards</p>
+                 <ul class="mt-1 list-disc space-y-0.5 pl-4 text-xs">
+                   <li>Both accounts are tied to a verified university email — nobody is anonymous here.</li>
+                   ${l.deposit > 0 ? `<li>A refundable deposit of <strong>${esc(money(l.deposit, l.currency))}</strong> is held by the platform, not by the lender.</li>` : '<li>No deposit required at this price.</li>'}
+                   <li>Both sides attach a condition photo at handoff and at return.</li>
+                   <li>Reports need photo evidence, and an admin reviews both sides before anyone is penalised.</li>
+                 </ul>
+               </div>`
+            : ''
+        }
+
+        <!-- Seller card: the trust signals arrive before any message is sent. -->
+        <a href="/seller?u=${esc(l.seller.username)}" class="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+          ${l.seller.avatarUrl ? `<img src="${esc(l.seller.avatarUrl)}" alt="" width="40" height="40" loading="lazy" class="h-10 w-10 rounded-full object-cover" />` : '<span class="h-10 w-10 rounded-full bg-slate-200"></span>'}
+          <div class="min-w-0">
+            <p class="truncate text-sm font-medium">${esc(l.seller.name)} <span class="text-slate-400">@${esc(l.seller.username)}</span></p>
+            <p class="text-xs text-slate-500">${l.seller.rating ? `${l.seller.rating}★ from ${l.seller.ratingCount} rating${l.seller.ratingCount === 1 ? '' : 's'}` : 'No ratings yet'}</p>
+          </div>
+          <span class="ml-auto text-xs text-teal-700">View store →</span>
+        </a>
+
+        <div class="mt-4 space-y-2">
+          ${
+            l.whatsappLink && !mine
+              ? `<a href="${esc(l.whatsappLink)}" target="_blank" rel="noopener"
+                    class="block rounded-lg bg-emerald-600 px-4 py-2.5 text-center text-sm font-medium text-white">
+                   Message seller on WhatsApp
+                 </a>
+                 <p class="text-center text-xs text-slate-400">Opens WhatsApp with the item name filled in — no separate inbox to check.</p>`
+              : ''
+          }
+
+          ${
+            l.acceptsOffers && me && !mine
+              ? l.myOffer
+                ? `<p class="rounded-lg bg-slate-100 px-3 py-2 text-sm">Your offer of ${esc(money(l.myOffer.amount, l.currency))} is <strong>${esc(l.myOffer.status)}</strong>.</p>`
+                : `<form id="offer" class="rounded-xl border border-slate-200 bg-white p-3">
+                     <label class="text-sm font-medium">Make an offer</label>
+                     <p class="mb-2 text-xs text-slate-500">Propose your own price instead of taking the listed one.</p>
+                     <div class="flex gap-2">
+                       <input name="amount" type="number" min="1" required placeholder="${Math.round(l.price * 0.9)}"
+                              class="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm" />
+                       <input name="message" placeholder="Optional note" class="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm" />
+                       <button class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">Send</button>
+                     </div>
+                   </form>`
+              : ''
+          }
+          ${!me ? `<a href="/login" class="block rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-medium">Sign in to make an offer</a>` : ''}
+          ${mine ? `<a href="/me?tab=offers" class="block rounded-lg bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white">See offers on this listing</a>` : ''}
+        </div>
+
+        <p class="mt-4 text-xs text-slate-400">Posted ${esc(relative(l.createdAt))}</p>`;
+
+      $('#save')?.addEventListener('click', async (e) => {
+        const { saved } = await post(`/listings/${id}/save`);
+        e.target.textContent = saved ? 'Saved ✓' : 'Save';
+        invalidate('/listings');
+        toast(saved ? 'Saved. You will be told if the price drops.' : 'Removed from your saved items.');
+      });
+
+      $('#offer')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        try {
+          await post(`/listings/${id}/offers`, { amount: Number(form.get('amount')), message: form.get('message') });
+          toast('Offer sent. The seller decides from their side.');
+          render();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
+
+    render().catch((e) => {
+      $('#view').innerHTML = `<p class="py-8 text-center text-sm text-red-600">${esc(e.message)}</p>`;
+    });
+  </script>
+</Base>

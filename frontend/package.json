@@ -1,0 +1,17 @@
+{
+  "name": "utg-connect-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UTG Connect MVP frontend — static Astro shell that talks to the API",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview --port 4321"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "astro": "^5.14.1",
+    "tailwindcss": "^4.1.13"
+  }
+}

@@ -1,0 +1,164 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Admin">
+  <h1 class="mb-3 text-lg font-semibold">Admin</h1>
+  <div id="overview" class="mb-5 grid grid-cols-3 gap-2 text-center sm:grid-cols-4"></div>
+
+  <h2 class="mb-2 text-sm font-medium text-slate-600">Post approval queue</h2>
+  <p class="mb-2 text-xs text-slate-500">A light check before a council post goes live — keeps the hub authoritative without slowing anyone down much.</p>
+  <div id="queue" class="mb-6 space-y-2"></div>
+
+  <h2 class="mb-2 text-sm font-medium text-slate-600">Disputes</h2>
+  <p class="mb-2 text-xs text-slate-500">
+    Evidence from both sides sits below each report. Upholding it bans the accused; finding it fabricated bans the
+    person who filed it — that symmetry is what stops reporting being used as a weapon.
+  </p>
+  <div id="reports" class="mb-6 space-y-3"></div>
+
+  <h2 class="mb-2 text-sm font-medium text-slate-600">School pages</h2>
+  <p class="mb-2 text-xs text-slate-500">Add or remove a page directly — no approval workflow, by design. Each new page reuses the same template.</p>
+  <div id="schools" class="mb-3 space-y-2"></div>
+
+  <form id="add-school" class="mb-6 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3">
+    <input name="code" required placeholder="CODE" class="w-24 rounded border border-slate-300 px-2 py-1.5 text-sm uppercase" />
+    <input name="name" required placeholder="School name" class="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm" />
+    <input name="color" type="color" value="#0f766e" class="h-9 w-12 rounded border border-slate-300" />
+    <button class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">Add page</button>
+  </form>
+
+  <script>
+    import { fetchJson, post, patch, del, auth, invalidate } from '../lib/api.js';
+    import { $, esc, spinner, empty, toast, relative, dateLabel } from '../lib/ui.js';
+
+    const me = auth.user;
+    if (!me) location.href = '/login';
+
+    async function overview() {
+      const o = await fetchJson('/admin/overview');
+      const tile = (label, value, hot) =>
+        `<div class="rounded-lg border ${hot && value ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'} p-2">
+           <p class="text-lg font-semibold">${value}</p><p class="text-[11px] text-slate-500">${esc(label)}</p></div>`;
+      $('#overview').innerHTML = [
+        tile('posts awaiting', o.pendingPosts, true),
+        tile('open reports', o.openReports, true),
+        tile('students', o.students),
+        tile('councils', o.councils),
+        tile('active listings', o.activeListings),
+        tile('open rentals', o.openRentals),
+        tile('banned', o.bannedUsers),
+      ].join('');
+    }
+
+    async function queue() {
+      const { posts } = await fetchJson('/posts?status=pending');
+      $('#queue').innerHTML = posts.length
+        ? posts
+            .map(
+              (p) => `<article class="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                <p class="mb-1"><span class="rounded px-1.5 py-0.5 text-[11px] font-bold text-white" style="background:${esc(p.school.color)}">${esc(p.school.code)}</span>
+                   <span class="ml-1 text-xs uppercase text-slate-400">${esc(p.kind)}</span></p>
+                <p class="font-medium">${esc(p.title)}</p>
+                ${p.body ? `<p class="text-slate-600">${esc(p.body)}</p>` : ''}
+                <p class="mt-1 text-xs text-slate-400">${p.startsAt ? esc(dateLabel(p.startsAt)) + ' · ' : ''}by ${esc(p.author.name)} ${esc(relative(p.createdAt))}</p>
+                <div class="mt-2 flex gap-2">
+                  <button data-id="${p.id}" data-d="approve" class="rule rounded bg-teal-700 px-3 py-1 text-xs font-medium text-white">Approve &amp; notify</button>
+                  <button data-id="${p.id}" data-d="reject" class="rule rounded border border-slate-300 px-3 py-1 text-xs">Reject</button>
+                </div>
+              </article>`,
+            )
+            .join('')
+        : empty('Queue is clear.');
+
+      document.querySelectorAll('.rule').forEach((b) =>
+        b.addEventListener('click', async () => {
+          await patch(`/posts/${b.dataset.id}/approve`, { decision: b.dataset.d });
+          invalidate('/posts', '/schools');
+          toast(b.dataset.d === 'approve' ? 'Published — students of that school were notified.' : 'Rejected.');
+          queue();
+          overview();
+        }),
+      );
+    }
+
+    async function reports() {
+      const { reports } = await fetchJson('/admin/reports?status=open');
+      $('#reports').innerHTML = reports.length
+        ? reports
+            .map(
+              (r) => `<article class="rounded-xl border border-red-200 bg-white p-3 text-sm">
+                <p class="font-medium">@${esc(r.reporter.username)} reported @${esc(r.accused.username)}</p>
+                <p class="mt-1 text-slate-700">${esc(r.reason)}</p>
+                <p class="mt-2 text-xs font-medium text-slate-500">Evidence filed with the report</p>
+                <img src="${esc(r.evidenceUrl)}" alt="" loading="lazy" width="240" height="160" class="mt-1 h-32 w-auto rounded object-cover" />
+                ${
+                  r.conditionPhotos.length
+                    ? `<p class="mt-2 text-xs font-medium text-slate-500">Condition photos from the rental (both sides)</p>
+                       <div class="mt-1 flex gap-2 overflow-x-auto">
+                         ${r.conditionPhotos.map((p) => `<figure class="w-28 shrink-0"><img src="${esc(p.photo_url)}" alt="" loading="lazy" width="112" height="80" class="h-20 w-28 rounded object-cover" /><figcaption class="text-[10px] text-slate-500">${esc(p.phase)}${p.note ? ` — ${esc(p.note)}` : ''}</figcaption></figure>`).join('')}
+                       </div>`
+                    : '<p class="mt-2 text-xs text-slate-400">No rental attached to this report.</p>'
+                }
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button data-id="${r.id}" data-v="upheld" class="rule2 rounded bg-red-600 px-3 py-1 text-xs font-medium text-white">Uphold — ban @${esc(r.accused.username)}</button>
+                  <button data-id="${r.id}" data-v="fabricated" class="rule2 rounded border border-red-300 px-3 py-1 text-xs text-red-700">Fabricated — ban @${esc(r.reporter.username)}</button>
+                </div>
+              </article>`,
+            )
+            .join('')
+        : empty('No open disputes.');
+
+      document.querySelectorAll('.rule2').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const note = prompt('Note for the record (what the evidence showed):') || '';
+          const res = await patch(`/admin/reports/${b.dataset.id}`, { verdict: b.dataset.v, note });
+          toast(`Ruled ${res.verdict}. The banned account is now on the public list.`);
+          reports();
+          overview();
+        }),
+      );
+    }
+
+    async function schools() {
+      const { schools } = await fetchJson('/schools');
+      $('#schools').innerHTML = schools
+        .map(
+          (s) => `<div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-sm">
+            <span class="h-6 w-6 shrink-0 rounded" style="background:${esc(s.color)}"></span>
+            <span class="font-medium">${esc(s.code)}</span>
+            <span class="truncate text-slate-500">${esc(s.name)}</span>
+            <button data-code="${esc(s.code)}" class="rm ml-auto shrink-0 rounded border border-slate-300 px-2 py-1 text-xs">Remove</button>
+          </div>`,
+        )
+        .join('');
+
+      document.querySelectorAll('.rm').forEach((b) =>
+        b.addEventListener('click', async () => {
+          if (!confirm(`Remove the ${b.dataset.code} page? Its posts stay in the database and come back if you re-add it.`)) return;
+          await del(`/schools/${b.dataset.code}`);
+          invalidate('/schools', '/posts');
+          toast('Page removed.');
+          schools();
+        }),
+      );
+    }
+
+    $('#add-school').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = Object.fromEntries(new FormData(e.target));
+      try {
+        await post('/schools', { code: f.code, name: f.name, color: f.color });
+        invalidate('/schools');
+        toast(`${f.code.toUpperCase()} added — same template, no extra build work.`);
+        e.target.reset();
+        schools();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+
+    for (const el of ['#overview', '#queue', '#reports', '#schools']) $(el).innerHTML = spinner();
+    Promise.all([overview(), queue(), reports(), schools()]).catch((e) => toast(e.message, 'error'));
+  </script>
+</Base>

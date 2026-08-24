@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+/* Deliberately plain. This MVP exists to test whether the concept holds up,
+   not to settle on a visual identity — so: system fonts, no web fonts, no
+   decorative imagery, nothing that costs bandwidth. */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Images are the heaviest thing on the page, so every one of them reserves its
+   box and loads lazily. */
+img {
+  @apply bg-slate-200;
+}

@@ -1,0 +1,93 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="New post" active="hub">
+  <h1 class="mb-1 text-lg font-semibold">Post to your school page</h1>
+  <p id="who" class="mb-4 text-sm text-slate-500"></p>
+
+  <form id="form" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+    <div>
+      <label class="text-sm font-medium">School page</label>
+      <select name="schoolCode" id="school" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">What kind of post?</label>
+      <select name="kind" id="kind" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="announcement">Announcement — no date</option>
+        <option value="event">Event</option>
+        <option value="deadline">Deadline</option>
+        <option value="payment">Payment due</option>
+      </select>
+      <p class="mt-1 text-xs text-slate-500">Anything with a date gets a live countdown badge and an add-to-calendar button.</p>
+    </div>
+
+    <input name="title" required placeholder="Title" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <textarea name="body" rows="4" placeholder="Details — amounts, where to pay, what to bring" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+
+    <div id="date-row">
+      <label class="text-sm font-medium">Date &amp; time</label>
+      <input name="startsAt" type="datetime-local" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <input name="location" placeholder="Where (optional)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+
+    <button class="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white">Post</button>
+    <p id="error" class="text-sm text-red-600"></p>
+  </form>
+
+  <script>
+    import { get, post, auth, invalidate } from '../lib/api.js';
+    import { $, esc, qs, toast } from '../lib/ui.js';
+
+    const me = auth.user;
+    if (!me) location.href = '/login';
+
+    // Only the official council account for a school may post to that page.
+    if (me && me.role !== 'council' && me.role !== 'admin') {
+      $('#form').innerHTML =
+        '<p class="text-sm text-slate-600">Only a school council account or the platform admin can post here. ' +
+        'Student accounts read the hub and use the marketplace.</p>';
+    } else {
+      $('#who').textContent =
+        me.role === 'admin'
+          ? 'Signed in as admin — you can post to any page, and your posts skip the approval queue.'
+          : `Signed in as the ${me.schoolCode} council account. Posts go to an admin for a quick check before they go live.`;
+
+      get('/schools').then(({ data }) => {
+        const allowed = me.role === 'admin' ? data.schools : data.schools.filter((s) => s.code === me.schoolCode);
+        $('#school').innerHTML = allowed.map((s) => `<option value="${esc(s.code)}">${esc(s.code)} — ${esc(s.name)}</option>`).join('');
+        const preset = qs('school');
+        if (preset && allowed.some((s) => s.code === preset)) $('#school').value = preset;
+      });
+
+      const syncDate = () => {
+        $('#date-row').style.display = $('#kind').value === 'announcement' ? 'none' : 'block';
+      };
+      $('#kind').addEventListener('change', syncDate);
+      syncDate();
+
+      $('#form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        $('#error').textContent = '';
+        const f = new FormData(e.target);
+        try {
+          const res = await post('/posts', {
+            schoolCode: f.get('schoolCode'),
+            kind: f.get('kind'),
+            title: f.get('title'),
+            body: f.get('body'),
+            location: f.get('location'),
+            startsAt: f.get('startsAt') ? new Date(f.get('startsAt')).toISOString() : null,
+          });
+          invalidate('/posts', '/schools');
+          toast(res.awaitingApproval ? 'Sent for approval — an admin will check it shortly.' : 'Posted.');
+          setTimeout(() => (location.href = `/schools?code=${f.get('schoolCode')}`), 900);
+        } catch (err) {
+          $('#error').textContent = err.message;
+        }
+      });
+    }
+  </script>
+</Base>

@@ -1,0 +1,164 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Marketplace" active="market">
+  <!-- Seller stories: 24-hour "Restocked / 3 left" notes. Text only. -->
+  <section class="-mx-4 mb-4 overflow-x-auto px-4">
+    <div id="stories" class="flex gap-2 pb-1"></div>
+  </section>
+
+  <div class="mb-3 flex gap-1 rounded-lg bg-slate-200 p-0.5 text-sm">
+    <button data-section="" class="sec flex-1 rounded-md px-3 py-1.5 font-medium">All</button>
+    <button data-section="goods" class="sec flex-1 rounded-md px-3 py-1.5 font-medium">Goods</button>
+    <button data-section="services" class="sec flex-1 rounded-md px-3 py-1.5 font-medium">Services</button>
+    <button data-section="rent" class="sec flex-1 rounded-md px-3 py-1.5 font-medium">Rent &amp; Borrow</button>
+  </div>
+
+  <div class="mb-3 flex gap-2">
+    <div class="flex flex-1 overflow-hidden rounded-lg border border-slate-300 bg-white">
+      <!-- Search toggles between finding an item and finding a person. -->
+      <select id="searchBy" class="border-r border-slate-200 bg-slate-50 px-2 text-sm text-slate-600">
+        <option value="item">Items</option>
+        <option value="seller">Sellers</option>
+      </select>
+      <input id="q" placeholder="Search…" class="flex-1 px-3 py-2 text-sm outline-none" />
+    </div>
+    <button id="filters-toggle" class="rounded-lg border border-slate-300 bg-white px-3 text-sm">Filters</button>
+  </div>
+
+  <div id="filters" style="display:none" class="mb-3 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-4">
+    <select id="school" class="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">Any school</option></select>
+    <select id="category" class="rounded border border-slate-300 px-2 py-1.5 text-sm"><option value="">Any category</option></select>
+    <input id="min" type="number" placeholder="Min price" class="rounded border border-slate-300 px-2 py-1.5 text-sm" />
+    <input id="max" type="number" placeholder="Max price" class="rounded border border-slate-300 px-2 py-1.5 text-sm" />
+  </div>
+
+  <div class="mb-3 flex items-center gap-2 text-sm">
+    <select id="sort" class="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+      <option value="new">New</option>
+      <option value="trending">Trending</option>
+      <option value="price_asc">Price: low to high</option>
+      <option value="price_desc">Price: high to low</option>
+    </select>
+    <span id="count" class="text-xs text-slate-500"></span>
+    <a href="/sell" class="ml-auto rounded-lg bg-teal-700 px-3 py-1.5 font-medium text-white">Sell something</a>
+  </div>
+
+  <div id="grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3"></div>
+
+  <script>
+    import { get } from '../lib/api.js';
+    import { $, esc, money, spinner, empty, relative } from '../lib/ui.js';
+
+    const state = { section: '', q: '', searchBy: 'item', school: '', category: '', min: '', max: '', sort: 'new' };
+    let meta = null;
+
+    async function loadOptions() {
+      const [{ data: m }, { data: s }] = await Promise.all([get('/listings/meta'), get('/schools')]);
+      meta = m;
+      $('#school').innerHTML =
+        '<option value="">Any school</option>' + s.schools.map((x) => `<option value="${esc(x.code)}">${esc(x.code)}</option>`).join('');
+      syncCategories();
+    }
+
+    /** Categories are strict per section, so nothing lands in the wrong feed. */
+    function syncCategories() {
+      if (!meta) return;
+      const list = state.section ? meta.categories[state.section] : [...new Set(Object.values(meta.categories).flat())].sort();
+      $('#category').innerHTML =
+        '<option value="">Any category</option>' + list.map((c) => `<option value="${esc(c)}">${esc(c.replace(/-/g, ' '))}</option>`).join('');
+      $('#category').value = '';
+      state.category = '';
+    }
+
+    async function renderStories() {
+      const { data } = await get('/stories');
+      $('#stories').innerHTML = data.stories.length
+        ? data.stories
+            .map(
+              (s) => `
+        <a href="${s.listingId ? `/listing?id=${s.listingId}` : `/seller?u=${esc(s.seller.username)}`}"
+           class="flex w-40 shrink-0 flex-col rounded-lg border border-amber-200 bg-amber-50 p-2">
+          <span class="truncate text-xs font-medium text-amber-900">@${esc(s.seller.username)}</span>
+          <span class="mt-0.5 line-clamp-2 text-xs text-amber-800">${esc(s.text)}</span>
+          <span class="mt-1 text-[10px] text-amber-600">${esc(relative(s.createdAt))} · gone in 24h</span>
+        </a>`,
+            )
+            .join('')
+        : '';
+    }
+
+    function card(l) {
+      const dropping = l.status === 'scheduled';
+      return `
+      <a href="/listing?id=${l.id}" class="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div class="relative aspect-square">
+          <img src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" decoding="async"
+               width="300" height="300" class="h-full w-full object-cover" />
+          ${dropping ? `<span class="absolute left-1 top-1 rounded bg-slate-900/85 px-1.5 py-0.5 text-[10px] font-medium text-white">Drops in ${esc(l.dropCountdown || '')}</span>` : ''}
+          ${l.saved ? '<span class="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-medium">Saved</span>' : ''}
+        </div>
+        <div class="flex flex-1 flex-col p-2">
+          <p class="line-clamp-2 text-sm font-medium leading-snug">${esc(l.title)}</p>
+          <p class="mt-1 text-sm font-semibold text-teal-700">${esc(money(l.price, l.currency, l.priceUnit))}</p>
+          <p class="mt-auto pt-1 text-[11px] text-slate-500">
+            @${esc(l.seller.username)}${l.school ? ` · ${esc(l.school.code)}` : ''}${l.seller.rating ? ` · ${l.seller.rating}★` : ''}
+          </p>
+          ${l.pickupPoint ? `<p class="text-[11px] text-slate-400">Pickup: ${esc(l.pickupPoint)}</p>` : ''}
+        </div>
+      </a>`;
+    }
+
+    let timer;
+    async function render() {
+      $('#grid').innerHTML = spinner();
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(state)) if (v) params.set(k, v);
+      const { data, fromCache } = await get(`/listings?${params}`);
+      $('#count').textContent = `${data.listings.length} listing${data.listings.length === 1 ? '' : 's'}${fromCache ? ' · from cache' : ''}`;
+      $('#grid').innerHTML = data.listings.length ? data.listings.map(card).join('') : empty('Nothing matches that yet.');
+    }
+
+    const debounced = () => {
+      clearTimeout(timer);
+      timer = setTimeout(render, 250);
+    };
+
+    document.querySelectorAll('.sec').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.section = b.dataset.section;
+        document.querySelectorAll('.sec').forEach((x) => {
+          const on = x.dataset.section === state.section;
+          x.className = `sec flex-1 rounded-md px-3 py-1.5 font-medium ${on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`;
+        });
+        syncCategories();
+        render();
+      }),
+    );
+    document.querySelector('.sec').click();
+
+    $('#q').addEventListener('input', (e) => {
+      state.q = e.target.value.trim();
+      debounced();
+    });
+    $('#searchBy').addEventListener('change', (e) => {
+      state.searchBy = e.target.value;
+      $('#q').placeholder = state.searchBy === 'seller' ? 'Search by name or @username…' : 'Search items…';
+      if (state.q) render();
+    });
+    $('#filters-toggle').addEventListener('click', () => {
+      const box = $('#filters');
+      box.style.display = box.style.display === 'none' ? 'grid' : 'none';
+    });
+    for (const id of ['school', 'category', 'min', 'max', 'sort']) {
+      $(`#${id}`).addEventListener('change', (e) => {
+        state[id] = e.target.value;
+        render();
+      });
+    }
+
+    loadOptions().then(render);
+    renderStories();
+  </script>
+</Base>

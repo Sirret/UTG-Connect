@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.env
+*.log
+
+# The seeded demo database — rebuild it with `npm run reset` in backend/.
+backend/data/

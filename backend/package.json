@@ -1,0 +1,19 @@
+{
+  "name": "utg-connect-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UTG Connect MVP API — events hub + student marketplace",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed": "node src/seed.js",
+    "reset": "node src/seed.js --reset"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

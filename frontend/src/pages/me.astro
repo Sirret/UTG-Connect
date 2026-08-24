@@ -1,0 +1,290 @@
+---
+import Base from '../layouts/Base.astro';
+
+const tabs = [
+  ['alerts', 'Alerts'],
+  ['offers', 'Offers'],
+  ['listings', 'My listings'],
+  ['saved', 'Saved'],
+  ['rentals', 'Rentals'],
+];
+---
+
+<Base title="You" active="me">
+  <div id="head" class="mb-4"></div>
+
+  <div class="-mx-4 mb-4 overflow-x-auto px-4">
+    <div class="flex gap-1 border-b border-slate-200 text-sm">
+      {tabs.map(([key, label]) => <button data-tab={key} class="tab whitespace-nowrap px-3 py-2 font-medium">{label}</button>)}
+    </div>
+  </div>
+
+  <div id="panel"></div>
+
+  <script>
+    import { fetchJson, post, patch, auth, invalidate } from '../lib/api.js';
+    import { $, esc, money, qs, spinner, empty, toast, relative, dateLabel } from '../lib/ui.js';
+
+    const me = auth.user;
+    if (!me) location.href = '/login';
+    let tab = qs('tab') || 'alerts';
+
+    $('#head').innerHTML = `
+      <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <p class="font-semibold">${esc(me.name)} <span class="text-slate-400">@${esc(me.username)}</span></p>
+        <p class="text-sm text-slate-500">${esc(me.role)}${me.schoolCode ? ` · ${esc(me.schoolCode)}` : ''} · verified university email</p>
+        <div class="mt-3 flex flex-wrap gap-2 text-sm">
+          <a href="/seller?u=${esc(me.username)}" class="rounded-lg border border-slate-300 px-3 py-1.5">My storefront</a>
+          <a href="/sell" class="rounded-lg border border-slate-300 px-3 py-1.5">List something</a>
+          <a href="/banlist" class="rounded-lg border border-slate-300 px-3 py-1.5">Ban list</a>
+          ${me.role === 'admin' ? '<a href="/admin" class="rounded-lg bg-slate-900 px-3 py-1.5 text-white">Admin</a>' : ''}
+          ${me.role === 'council' || me.role === 'admin' ? '<a href="/compose" class="rounded-lg bg-teal-700 px-3 py-1.5 text-white">New post</a>' : ''}
+        </div>
+      </div>`;
+
+    // --- Alerts ---------------------------------------------------------------
+    async function alerts() {
+      const { notifications } = await fetchJson('/me/notifications');
+      $('#panel').innerHTML = notifications.length
+        ? `<button id="mark" class="mb-3 text-sm text-teal-700">Mark all read</button>
+           <ul class="space-y-2">
+             ${notifications
+               .map(
+                 (n) => `<li class="rounded-lg border p-3 text-sm ${n.read ? 'border-slate-200 bg-white' : 'border-teal-200 bg-teal-50'}">
+                   <a href="${esc(n.link || '#')}" class="block">
+                     <p>${esc(n.text)}</p>
+                     <p class="mt-0.5 text-xs text-slate-400">${esc(n.kind)} · ${esc(relative(n.createdAt))}</p>
+                   </a>
+                 </li>`,
+               )
+               .join('')}
+           </ul>`
+        : empty('Nothing yet. Deadlines, offers and price drops land here.');
+      $('#mark')?.addEventListener('click', async () => {
+        await post('/me/notifications/read');
+        alerts();
+      });
+    }
+
+    // --- Offers ---------------------------------------------------------------
+    async function offers() {
+      const { sent, received } = await fetchJson('/me/offers');
+      const row = (o, side) => `
+        <li class="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          <div class="flex items-start gap-2">
+            <div class="min-w-0 flex-1">
+              <a href="/listing?id=${o.listingId}" class="font-medium hover:underline">${esc(o.title)}</a>
+              <p class="text-slate-600">${esc(money(o.amount, o.currency))} ${side === 'received' ? `from @${esc(o.buyer.username)}` : `to @${esc(o.seller.username)}`}</p>
+              ${o.message ? `<p class="mt-1 text-xs italic text-slate-500">“${esc(o.message)}”</p>` : ''}
+              <p class="mt-1 text-xs text-slate-400">${esc(relative(o.createdAt))}</p>
+            </div>
+            ${
+              side === 'received' && o.status === 'pending'
+                ? `<div class="flex shrink-0 flex-col gap-1">
+                     <button data-id="${o.id}" data-decision="accepted" class="decide rounded bg-teal-700 px-2 py-1 text-xs font-medium text-white">Accept</button>
+                     <button data-id="${o.id}" data-decision="declined" class="decide rounded border border-slate-300 px-2 py-1 text-xs">Decline</button>
+                   </div>`
+                : `<span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    o.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : o.status === 'declined' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-800'
+                  }">${esc(o.status)}</span>`
+            }
+          </div>
+        </li>`;
+
+      $('#panel').innerHTML = `
+        <h2 class="mb-2 text-sm font-medium text-slate-600">Waiting on you (${received.filter((o) => o.status === 'pending').length})</h2>
+        <ul class="space-y-2">${received.length ? received.map((o) => row(o, 'received')).join('') : empty('No offers on your listings yet.')}</ul>
+        <h2 class="mb-2 mt-5 text-sm font-medium text-slate-600">Offers you made</h2>
+        <ul class="space-y-2">${sent.length ? sent.map((o) => row(o, 'sent')).join('') : empty('You have not made any offers.')}</ul>`;
+
+      document.querySelectorAll('.decide').forEach((b) =>
+        b.addEventListener('click', async () => {
+          try {
+            const res = await patch(`/offers/${b.dataset.id}`, { status: b.dataset.decision });
+            invalidate('/listings');
+            toast(
+              res.rentalId
+                ? 'Accepted. A rental agreement is open — settle the deposit and take a handoff photo.'
+                : `Offer ${res.status}.`,
+            );
+            res.rentalId ? ((tab = 'rentals'), syncTabs(), rentals()) : offers();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        }),
+      );
+    }
+
+    // --- My listings ----------------------------------------------------------
+    async function myListings() {
+      const { listings: mine } = await fetchJson('/me/listings');
+      $('#panel').innerHTML = mine.length
+        ? `<ul class="space-y-2">${mine
+            .map(
+              (l) => `<li class="flex gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                <img src="${esc(l.imageUrl)}" alt="" width="56" height="56" loading="lazy" class="h-14 w-14 rounded object-cover" />
+                <div class="min-w-0 flex-1 text-sm">
+                  <a href="/listing?id=${l.id}" class="font-medium hover:underline">${esc(l.title)}</a>
+                  <p class="text-slate-600">${esc(money(l.price, l.currency, l.priceUnit))} · ${l.views} views · ${l.saves} saved</p>
+                  <p class="text-xs text-slate-400">${esc(l.status)}${l.pendingOffers ? ` · ${l.pendingOffers} offer(s) waiting` : ''}</p>
+                </div>
+                ${l.status === 'active' ? `<button data-id="${l.id}" class="drop shrink-0 self-start rounded border border-slate-300 px-2 py-1 text-xs">Cut price 10%</button>` : ''}
+              </li>`,
+            )
+            .join('')}</ul>`
+        : empty('You have not listed anything yet.');
+
+      // Cutting a price is the quickest way to see the save/wishlist alert fire.
+      document.querySelectorAll('.drop').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const l = mine.find((x) => x.id === Number(b.dataset.id));
+          await patch(`/listings/${l.id}`, { price: Math.round(l.price * 0.9) });
+          invalidate('/listings');
+          toast('Price cut. Everyone who saved it has been alerted.');
+          myListings();
+        }),
+      );
+    }
+
+    // --- Saved ----------------------------------------------------------------
+    async function saved() {
+      const { listings } = await fetchJson('/me/saves');
+      $('#panel').innerHTML = listings.length
+        ? `<p class="mb-2 text-xs text-slate-500">You are alerted if any of these drop in price.</p>
+           <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+             ${listings
+               .map(
+                 (l) => `<a href="/listing?id=${l.id}" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                   <img src="${esc(l.imageUrl)}" alt="" loading="lazy" width="300" height="300" class="aspect-square w-full object-cover" />
+                   <div class="p-2 text-sm"><p class="line-clamp-2">${esc(l.title)}</p><p class="font-semibold text-teal-700">${esc(money(l.price, l.currency, l.priceUnit))}</p></div>
+                 </a>`,
+               )
+               .join('')}
+           </div>`
+        : empty('Nothing saved yet.');
+    }
+
+    // --- Rentals: deposits, condition photos, disputes -------------------------
+    async function rentals() {
+      const { rentals } = await fetchJson('/rentals');
+      $('#panel').innerHTML = rentals.length
+        ? `<ul class="space-y-3">${rentals.map(rentalCard).join('')}</ul>`
+        : empty('No rentals. Accept an offer on a Rent & Borrow listing to start one.');
+      wireRentals();
+    }
+
+    function rentalCard(r) {
+      const iAmLender = r.lender.id === me.id;
+      const other = iAmLender ? r.borrower : r.lender;
+      const depositTone = { held: 'bg-amber-100 text-amber-800', released: 'bg-emerald-100 text-emerald-700', forfeited: 'bg-red-100 text-red-700', none: 'bg-slate-100 text-slate-500' }[r.depositState];
+
+      return `
+      <li class="rounded-xl border border-slate-200 bg-white p-3">
+        <div class="flex gap-3">
+          <img src="${esc(r.imageUrl)}" alt="" width="56" height="56" loading="lazy" class="h-14 w-14 rounded object-cover" />
+          <div class="min-w-0 flex-1 text-sm">
+            <p class="font-medium">${esc(r.title)}</p>
+            <p class="text-slate-600">${iAmLender ? 'Lent to' : 'Borrowed from'} @${esc(other.username)} · ${esc(money(r.amount, r.currency))}</p>
+            <p class="text-xs text-slate-400">${esc(r.status.replace('_', ' '))}${r.dueAt ? ` · due ${esc(dateLabel(r.dueAt))}` : ''}</p>
+          </div>
+        </div>
+
+        ${
+          r.deposit > 0
+            ? `<div class="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2 text-xs">
+                 <span class="rounded-full px-2 py-0.5 font-medium ${depositTone}">Deposit ${esc(money(r.deposit, r.currency))} — ${esc(r.depositState)}</span>
+                 ${r.depositRef ? `<span class="text-slate-500">ref ${esc(r.depositRef)}</span>` : ''}
+                 ${!iAmLender && r.depositState === 'none' ? `<button data-r="${r.id}" data-a="hold" class="dep rounded bg-slate-900 px-2 py-1 text-white">Pay deposit</button>` : ''}
+                 ${iAmLender && r.depositState === 'held' ? `<button data-r="${r.id}" data-a="release" class="dep rounded bg-emerald-600 px-2 py-1 text-white">Item came back fine — refund</button>` : ''}
+                 ${iAmLender && r.depositState === 'held' ? `<button data-r="${r.id}" data-a="forfeit" class="dep rounded border border-red-300 px-2 py-1 text-red-700">Claim deposit</button>` : ''}
+               </div>
+               <p class="mt-1 text-[11px] text-slate-500">The platform holds this, not the other student — it goes back on return, or to the lender if the item does not come back right.</p>`
+            : '<p class="mt-2 text-xs text-slate-500">Below the deposit threshold — no escrow on this one.</p>'
+        }
+
+        ${
+          r.photos.length
+            ? `<div class="mt-2 flex gap-2 overflow-x-auto">
+                 ${r.photos.map((p) => `<figure class="w-24 shrink-0"><img src="${esc(p.url)}" alt="" loading="lazy" width="96" height="72" class="h-16 w-24 rounded object-cover" /><figcaption class="text-[10px] text-slate-500">${esc(p.phase)}</figcaption></figure>`).join('')}
+               </div>`
+            : ''
+        }
+
+        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+          <button data-r="${r.id}" data-p="handoff" class="photo rounded border border-slate-300 px-2 py-1">Add handoff photo</button>
+          <button data-r="${r.id}" data-p="return" class="photo rounded border border-slate-300 px-2 py-1">Add return photo</button>
+          <button data-r="${r.id}" data-u="${esc(other.username)}" class="report ml-auto rounded border border-red-300 px-2 py-1 text-red-700">Report a problem</button>
+        </div>
+      </li>`;
+    }
+
+    function wireRentals() {
+      document.querySelectorAll('.dep').forEach((b) =>
+        b.addEventListener('click', async () => {
+          try {
+            const res = await post(`/rentals/${b.dataset.r}/deposit`, { action: b.dataset.a });
+            toast(`Deposit ${res.depositState}${res.reference ? ` (${res.reference})` : ''}.`);
+            rentals();
+          } catch (e) {
+            toast(e.message, 'error');
+          }
+        }),
+      );
+
+      document.querySelectorAll('.photo').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const url = prompt('Photo URL of the item’s condition:', `https://picsum.photos/seed/${Math.random().toString(36).slice(2, 7)}/600/400`);
+          if (!url) return;
+          try {
+            await post(`/rentals/${b.dataset.r}/photos`, { phase: b.dataset.p, photoUrl: url, note: '' });
+            toast('Photo on file. Both sides can see it if a dispute comes up.');
+            rentals();
+          } catch (e) {
+            toast(e.message, 'error');
+          }
+        }),
+      );
+
+      document.querySelectorAll('.report').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const reason = prompt('What went wrong? An admin reads this alongside the photos from both sides.');
+          if (!reason) return;
+          const evidenceUrl = prompt('Photo evidence URL — required. No evidence, no report.');
+          if (!evidenceUrl) {
+            toast('A report without photo evidence cannot be filed.', 'error');
+            return;
+          }
+          try {
+            const res = await post('/reports', { accusedUsername: b.dataset.u, reason, evidenceUrl, rentalId: Number(b.dataset.r) });
+            alert(res.notice);
+            rentals();
+          } catch (e) {
+            toast(e.message, 'error');
+          }
+        }),
+      );
+    }
+
+    const panels = { alerts, offers, listings: myListings, saved, rentals };
+
+    function syncTabs() {
+      document.querySelectorAll('.tab').forEach((b) => {
+        const on = b.dataset.tab === tab;
+        b.className = `tab whitespace-nowrap px-3 py-2 font-medium ${on ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'}`;
+      });
+    }
+
+    document.querySelectorAll('.tab').forEach((b) =>
+      b.addEventListener('click', () => {
+        tab = b.dataset.tab;
+        syncTabs();
+        $('#panel').innerHTML = spinner();
+        panels[tab]();
+      }),
+    );
+
+    syncTabs();
+    $('#panel').innerHTML = spinner();
+    panels[tab]?.();
+  </script>
+</Base>

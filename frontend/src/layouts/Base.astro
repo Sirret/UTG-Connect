@@ -1,0 +1,87 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  active?: string;
+}
+const { title, active = '' } = Astro.props;
+
+const nav = [
+  { href: '/', label: 'Hub', key: 'hub' },
+  { href: '/market', label: 'Market', key: 'market' },
+  { href: '/me', label: 'You', key: 'me' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="UTG Connect — one place for school events, deadlines and the student marketplace." />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>{title} · UTG Connect</title>
+  </head>
+  <body class="min-h-dvh pb-20">
+    <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
+        <a href="/" class="font-semibold tracking-tight text-teal-700">UTG&nbsp;Connect</a>
+        <nav class="ml-auto flex items-center gap-1 text-sm">
+          {
+            nav.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  'rounded-md px-3 py-1.5',
+                  active === item.key ? 'bg-teal-50 font-medium text-teal-700' : 'text-slate-600 hover:bg-slate-100',
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+          <span id="nav-auth" class="ml-1"></span>
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-3xl px-4 py-5">
+      <slot />
+    </main>
+
+    <footer class="mx-auto max-w-3xl px-4 pb-6 text-center text-xs text-slate-400">
+      <span id="cache-note"></span>
+      <p class="mt-1">UTG Connect · MVP build for concept validation</p>
+    </footer>
+
+    <script>
+      import { auth, cacheStats } from '../lib/api.js';
+      import { $ } from '../lib/ui.js';
+
+      const slot = $('#nav-auth');
+      const user = auth.user;
+      slot.innerHTML = user
+        ? `<button id="signout" class="rounded-md px-3 py-1.5 text-slate-500 hover:bg-slate-100" title="${user.email || user.username}">${user.username}</button>`
+        : `<a href="/login" class="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white">Sign in</a>`;
+      $('#signout')?.addEventListener('click', () => auth.signOut());
+
+      // Honest reporting of what the on-device cache is doing, so the caching
+      // claim can be checked rather than taken on faith.
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const s = cacheStats();
+          if (!s.entries) return;
+          $('#cache-note').textContent =
+            `Cached on this device: ${s.entries} response${s.entries === 1 ? '' : 's'} (${(s.bytes / 1024).toFixed(1)} KB) · ` +
+            `this visit: ${s.hits} served from cache, ${s.misses} downloaded`;
+        }, 400);
+      });
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
+    </script>
+  </body>
+</html>

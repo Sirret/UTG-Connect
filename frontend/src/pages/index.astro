@@ -1,0 +1,147 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Hub" active="hub">
+  <!-- "Today" activity strip: static school icons, coloured ring when there is
+       something new. Deliberately text + colour only, no images to download. -->
+  <section class="-mx-4 mb-5 overflow-x-auto px-4">
+    <div id="activity" class="flex gap-3 pb-1"></div>
+  </section>
+
+  <div id="digest" class="mb-5"></div>
+
+  <div class="mb-4 flex items-center gap-2">
+    <div class="flex rounded-lg bg-slate-200 p-0.5 text-sm">
+      <button data-scope="mine" class="scope rounded-md px-3 py-1.5 font-medium">My school</button>
+      <button data-scope="all" class="scope rounded-md px-3 py-1.5 font-medium">All schools</button>
+    </div>
+    <select id="kind" class="ml-auto rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
+      <option value="">Everything</option>
+      <option value="payment">Payments</option>
+      <option value="deadline">Deadlines</option>
+      <option value="event">Events</option>
+      <option value="announcement">Announcements</option>
+    </select>
+  </div>
+
+  <p id="sort-note" class="mb-3 text-xs text-slate-500"></p>
+  <div id="feed" class="space-y-3"></div>
+
+  <script>
+    import { get, auth, apiBase } from '../lib/api.js';
+    import { $, esc, countdown, kindChip, dateLabel, relative, spinner, empty } from '../lib/ui.js';
+
+    const user = auth.user;
+    // A student's home school is their default view — that is the point of
+    // picking one at sign-up.
+    let scope = user?.schoolCode ? 'mine' : 'all';
+    let kind = '';
+
+    async function renderActivity() {
+      const { data } = await get('/schools/activity');
+      $('#activity').innerHTML = data.schools
+        .map(
+          (s) => `
+        <a href="/schools?code=${esc(s.code)}" class="flex w-16 shrink-0 flex-col items-center gap-1">
+          <span class="grid h-14 w-14 place-items-center rounded-full text-xs font-bold text-white ${
+            s.hasNew ? 'ring-2 ring-offset-2' : 'opacity-70'
+          }" style="background:${esc(s.color)};${s.hasNew ? `--tw-ring-color:${esc(s.color)}` : ''}">${esc(s.code)}</span>
+          <span class="text-[11px] leading-tight text-slate-600">${s.hasNew ? `${s.newPosts} new` : 'quiet'}</span>
+        </a>`,
+        )
+        .join('');
+    }
+
+    async function renderDigest() {
+      const { data } = await get('/posts/digest');
+      if (!data.count) return;
+      const top = data.items.slice(0, 3);
+      $('#digest').innerHTML = `
+        <details class="rounded-xl border border-teal-200 bg-teal-50 p-3">
+          <summary class="cursor-pointer text-sm font-medium text-teal-900">
+            ${esc(data.title)} — ${data.count} thing${data.count === 1 ? '' : 's'} coming up
+          </summary>
+          <ul class="mt-2 space-y-1 text-sm text-teal-900">
+            ${top
+              .map((p) => `<li>• <strong>${esc(p.school.code)}</strong> ${esc(p.title)} — ${esc(p.countdown || '')}</li>`)
+              .join('')}
+            ${data.count > 3 ? `<li class="text-teal-700">…and ${data.count - 3} more below</li>` : ''}
+          </ul>
+        </details>`;
+    }
+
+    function card(p) {
+      return `
+      <article class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <a href="/schools?code=${esc(p.school.code)}" class="rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+             style="background:${esc(p.school.color)}">${esc(p.school.code)}</a>
+          ${kindChip(p.kind)}
+          ${countdown(p.daysLeft, p.countdown)}
+          <span class="ml-auto text-xs text-slate-400">${esc(relative(p.createdAt))}</span>
+        </div>
+        <h2 class="font-medium leading-snug"><a href="/post?id=${p.id}" class="hover:underline">${esc(p.title)}</a></h2>
+        ${p.body ? `<p class="mt-1 line-clamp-3 text-sm text-slate-600">${esc(p.body)}</p>` : ''}
+        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          ${p.startsAt ? `<span>${esc(dateLabel(p.startsAt))}</span>` : ''}
+          ${p.location ? `<span>· ${esc(p.location)}</span>` : ''}
+          ${
+            p.startsAt
+              ? `<a class="ml-auto rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50"
+                    href="${apiBase}/posts/${p.id}/calendar.ics">Add to calendar</a>`
+              : ''
+          }
+        </div>
+      </article>`;
+    }
+
+    async function renderFeed() {
+      $('#feed').innerHTML = spinner();
+      const school = scope === 'mine' && user?.schoolCode ? user.schoolCode : 'all';
+      const path = `/posts?school=${school}${kind ? `&kind=${kind}` : ''}&limit=60`;
+      const { data, fromCache, offline } = await get(path);
+
+      $('#sort-note').textContent =
+        school === 'all'
+          ? 'All schools, sorted by what is due soonest.'
+          : `${school} page, sorted by what is due soonest.`;
+
+      $('#feed').innerHTML = data.posts.length
+        ? data.posts.map(card).join('')
+        : empty('Nothing posted here yet.');
+
+      if (offline) {
+        $('#sort-note').textContent += ' (showing the copy saved on this phone — no connection)';
+      } else if (fromCache) {
+        $('#sort-note').textContent += ' (nothing changed since your last visit)';
+      }
+    }
+
+    function syncScopeButtons() {
+      document.querySelectorAll('.scope').forEach((b) => {
+        const on = b.dataset.scope === scope;
+        b.className = `scope rounded-md px-3 py-1.5 font-medium ${on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`;
+        b.disabled = b.dataset.scope === 'mine' && !user?.schoolCode;
+        if (b.disabled) b.title = 'Sign in and pick your school to use this view';
+      });
+    }
+
+    document.querySelectorAll('.scope').forEach((b) =>
+      b.addEventListener('click', () => {
+        scope = b.dataset.scope;
+        syncScopeButtons();
+        renderFeed();
+      }),
+    );
+    $('#kind').addEventListener('change', (e) => {
+      kind = e.target.value;
+      renderFeed();
+    });
+
+    syncScopeButtons();
+    renderActivity();
+    renderDigest();
+    renderFeed();
+  </script>
+</Base>

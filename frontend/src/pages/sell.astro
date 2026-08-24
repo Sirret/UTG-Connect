@@ -1,0 +1,122 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="New listing" active="market">
+  <h1 class="mb-1 text-lg font-semibold">List something</h1>
+  <p class="mb-4 text-sm text-slate-500">Zero commission — you keep the whole price. A photo is required; listings without one barely get looked at.</p>
+
+  <form id="form" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+    <div>
+      <label class="text-sm font-medium">Section</label>
+      <select name="section" id="section" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="goods">Goods — a physical item</option>
+        <option value="services">Services — tutoring, braiding, printing, DJing…</option>
+        <option value="rent">Rent &amp; Borrow — short-term, comes back to you</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Category</label>
+      <select name="category" id="category" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+      <p class="mt-1 text-xs text-slate-500">Picked at listing time and enforced, so a charger never turns up in the food feed.</p>
+    </div>
+
+    <input name="title" required placeholder="Title" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <textarea name="description" rows="3" placeholder="Details buyers will ask about anyway" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+
+    <div class="flex gap-2">
+      <input name="price" type="number" min="0" required placeholder="Price (GMD)" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <select name="priceUnit" id="priceUnit" class="rounded-lg border border-slate-300 px-2 py-2 text-sm">
+        <option value="item">per item</option>
+        <option value="hour">per hour</option>
+        <option value="day">per day</option>
+        <option value="week">per week</option>
+      </select>
+    </div>
+
+    <div id="deposit-row" style="display:none">
+      <label class="text-sm font-medium">Refundable deposit (GMD)</label>
+      <input name="deposit" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <p class="mt-1 text-xs text-slate-500" id="deposit-note"></p>
+    </div>
+
+    <input name="imageUrl" required placeholder="Photo URL" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <p class="-mt-2 text-xs text-slate-500">
+      This MVP takes a URL rather than an upload — file storage is a build decision, not a concept question.
+      <button type="button" id="sample" class="font-medium text-teal-700">Use a sample photo</button>
+    </p>
+
+    <div>
+      <label class="text-sm font-medium">Pickup point</label>
+      <select name="pickupPoint" id="pickup" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Schedule as a drop (optional)</label>
+      <input name="dropsAt" type="datetime-local" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <p class="mt-1 text-xs text-slate-500">Set a time and the listing stays hidden behind a public countdown until then.</p>
+    </div>
+
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" name="acceptsOffers" checked class="rounded" /> Let buyers propose their own price
+    </label>
+
+    <button class="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white">Post listing</button>
+    <p id="error" class="text-sm text-red-600"></p>
+  </form>
+
+  <script>
+    import { get, post, auth, invalidate } from '../lib/api.js';
+    import { $, esc, toast } from '../lib/ui.js';
+
+    if (!auth.user) location.href = '/login';
+
+    let meta = null;
+    get('/listings/meta').then(({ data }) => {
+      meta = data;
+      $('#pickup').innerHTML = data.pickupPoints.map((p) => `<option>${esc(p)}</option>`).join('');
+      syncSection();
+    });
+
+    function syncSection() {
+      if (!meta) return;
+      const section = $('#section').value;
+      $('#category').innerHTML = meta.categories[section].map((c) => `<option value="${esc(c)}">${esc(c.replace(/-/g, ' '))}</option>`).join('');
+      $('#priceUnit').value = section === 'rent' ? 'day' : section === 'services' ? 'item' : 'item';
+      $('#deposit-row').style.display = section === 'rent' ? 'block' : 'none';
+      $('#deposit-note').textContent = `Anything priced at ${meta.depositThreshold} GMD or above must carry a deposit — the platform holds it, not the lender, and releases it once the item comes back in good condition.`;
+    }
+    $('#section').addEventListener('change', syncSection);
+    $('#sample').addEventListener('click', () => {
+      $('[name=imageUrl]').value = `https://picsum.photos/seed/${Math.random().toString(36).slice(2, 8)}/600/600`;
+    });
+
+    $('#form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('#error').textContent = '';
+      const f = new FormData(e.target);
+      const body = {
+        section: f.get('section'),
+        category: f.get('category'),
+        title: f.get('title'),
+        description: f.get('description'),
+        price: Number(f.get('price')),
+        priceUnit: f.get('priceUnit'),
+        deposit: Number(f.get('deposit') || 0),
+        imageUrl: f.get('imageUrl'),
+        pickupPoint: f.get('pickupPoint'),
+        acceptsOffers: f.get('acceptsOffers') === 'on',
+        dropsAt: f.get('dropsAt') ? new Date(f.get('dropsAt')).toISOString() : null,
+      };
+      try {
+        const res = await post('/listings', body);
+        invalidate('/listings');
+        toast('Listed. Your followers were notified.');
+        location.href = `/listing?id=${res.listing.id}`;
+      } catch (err) {
+        $('#error').textContent = err.message;
+      }
+    });
+  </script>
+</Base>

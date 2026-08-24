@@ -1,0 +1,112 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="School page" active="hub">
+  <div id="header" class="mb-4"></div>
+
+  <div class="mb-4 flex gap-1 border-b border-slate-200 text-sm">
+    <button data-tab="feed" class="tab px-4 py-2 font-medium">Posts</button>
+    <button data-tab="info" class="tab px-4 py-2 font-medium">Info</button>
+  </div>
+
+  <div id="panel"></div>
+
+  <script>
+    import { get, auth, apiBase } from '../lib/api.js';
+    import { $, esc, qs, countdown, kindChip, dateLabel, spinner, empty } from '../lib/ui.js';
+
+    const code = (qs('code') || auth.user?.schoolCode || 'UTGSU').toUpperCase();
+    let tab = qs('tab') || 'feed';
+    let school = null;
+
+    async function renderHeader() {
+      const { data } = await get(`/schools/${code}`);
+      school = data.school;
+      // Each page is the same template — the council supplies only a colour and
+      // a logo, so a new school costs no design work.
+      $('#header').innerHTML = `
+        <div class="rounded-xl p-4 text-white" style="background:${esc(school.color)}">
+          <div class="flex items-center gap-3">
+            <span class="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/25 text-sm font-bold">${esc(school.code)}</span>
+            <div>
+              <h1 class="text-lg font-semibold leading-tight">${esc(school.name)}</h1>
+              <p class="text-sm opacity-90">${
+                data.councilAccount ? `Posts by ${esc(data.councilAccount.email)}` : 'No council account yet'
+              }</p>
+            </div>
+          </div>
+        </div>`;
+      return data;
+    }
+
+    function postCard(p) {
+      return `
+      <article class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          ${kindChip(p.kind)} ${countdown(p.daysLeft, p.countdown)}
+        </div>
+        <h2 class="font-medium"><a href="/post?id=${p.id}" class="hover:underline">${esc(p.title)}</a></h2>
+        ${p.body ? `<p class="mt-1 text-sm text-slate-600">${esc(p.body)}</p>` : ''}
+        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          ${p.startsAt ? `<span>${esc(dateLabel(p.startsAt))}</span>` : ''}
+          ${p.location ? `<span>· ${esc(p.location)}</span>` : ''}
+          ${p.startsAt ? `<a class="ml-auto rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700" href="${apiBase}/posts/${p.id}/calendar.ics">Add to calendar</a>` : ''}
+        </div>
+      </article>`;
+    }
+
+    async function renderFeed() {
+      $('#panel').innerHTML = spinner();
+      const { data } = await get(`/posts?school=${code}&limit=60`);
+      const canPost = auth.user && (auth.user.role === 'admin' || (auth.user.role === 'council' && auth.user.schoolCode === code));
+      $('#panel').innerHTML = `
+        ${canPost ? `<a href="/compose?school=${code}" class="mb-3 block rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">Post to ${esc(code)}</a>` : ''}
+        <div class="space-y-3">${data.posts.length ? data.posts.map(postCard).join('') : empty('This council has not posted yet.')}</div>`;
+    }
+
+    /** The Info tab: who to contact, for what, and how. */
+    async function renderInfo() {
+      $('#panel').innerHTML = spinner();
+      const { data } = await get(`/schools/${code}`);
+      const contactHref = (m) =>
+        m.contactKind === 'phone' ? `tel:${m.contact.replace(/\s/g, '')}` : `mailto:${m.contact}`;
+
+      $('#panel').innerHTML = data.council.length
+        ? `<ul class="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            ${data.council
+              .map(
+                (m) => `
+              <li class="p-4">
+                <p class="font-medium">${esc(m.position)}</p>
+                <p class="text-sm text-slate-600">${esc(m.name)}</p>
+                ${m.handles ? `<p class="mt-1 text-sm text-slate-500">Handles: ${esc(m.handles)}</p>` : ''}
+                ${m.contact ? `<a class="mt-2 inline-block text-sm font-medium text-teal-700 hover:underline" href="${esc(contactHref(m))}">${esc(m.contact)}</a>` : ''}
+              </li>`,
+              )
+              .join('')}
+           </ul>
+           <p class="mt-3 text-xs text-slate-500">Kept current by the council itself through its official account — an edit, not a rebuild.</p>`
+        : empty('This council has not filled in its directory yet.');
+    }
+
+    function syncTabs() {
+      document.querySelectorAll('.tab').forEach((b) => {
+        const on = b.dataset.tab === tab;
+        b.className = `tab px-4 py-2 font-medium ${on ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'}`;
+      });
+    }
+
+    document.querySelectorAll('.tab').forEach((b) =>
+      b.addEventListener('click', () => {
+        tab = b.dataset.tab;
+        syncTabs();
+        tab === 'feed' ? renderFeed() : renderInfo();
+      }),
+    );
+
+    syncTabs();
+    renderHeader();
+    tab === 'feed' ? renderFeed() : renderInfo();
+  </script>
+</Base>
