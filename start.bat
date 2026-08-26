@@ -67,7 +67,8 @@ set /a tries+=1
 curl -s -o nul http://localhost:4321/
 if not errorlevel 1 goto ready
 if !tries! geq 90 goto slow
-timeout /t 1 /nobreak >nul
+REM Not `timeout` - it errors out whenever stdin isn't a real interactive console.
+ping -n 2 127.0.0.1 >nul
 goto wait
 
 :slow

@@ -41,12 +41,25 @@ API_PID=$!
 (cd frontend && npm run dev) &
 WEB_PID=$!
 
-# Ctrl+C takes both down together, rather than orphaning one of them.
+# Ctrl+C takes both down together, rather than orphaning one of them. A plain
+# `kill` on the job PIDs isn't enough by itself - npm and the dev servers spawn
+# a chain of child processes underneath (confirmed on Windows: npm -> cmd.exe
+# -> node --watch -> the actual server), so this also frees the two ports
+# directly, with whichever tool the platform actually has.
 cleanup() {
   echo
   echo "  Stopping..."
   kill "$API_PID" "$WEB_PID" 2>/dev/null
-  wait "$API_PID" "$WEB_PID" 2>/dev/null
+
+  if command -v cmd.exe >/dev/null 2>&1; then
+    # Windows: reuse stop.bat's own tree-aware kill rather than duplicate it.
+    cmd.exe /c "$(cygpath -w "$PWD/stop.bat")" >/dev/null 2>&1
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser -k 4000/tcp 4321/tcp 2>/dev/null
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti tcp:4000 tcp:4321 2>/dev/null | while read -r pid; do kill "$pid" 2>/dev/null; done
+  fi
+
   exit 0
 }
 trap cleanup INT TERM
@@ -79,4 +92,8 @@ cat <<'EOF'
 
 EOF
 
-wait
+# Not a plain `wait` - under Git Bash on Windows, a shell blocked in `wait` on
+# native (non-MSYS) child processes doesn't reliably wake up for a signal, so
+# Ctrl+C can go unnoticed. A short sleep loop checks in every second instead,
+# and responds to the trap right away everywhere else too.
+while true; do sleep 1; done
