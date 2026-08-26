@@ -68,9 +68,9 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { get, post, auth, invalidate } from '../lib/api.js';
-    import { $, esc, toast } from '../lib/ui.js';
+    import { $, esc, toast, withBase } from '../lib/ui.js';
 
-    if (!auth.user) location.href = '/login';
+    if (!auth.user) location.href = withBase('/login');
 
     let meta = null;
     get('/listings/meta').then(({ data }) => {
@@ -113,7 +113,7 @@ import Base from '../layouts/Base.astro';
         const res = await post('/listings', body);
         invalidate('/listings');
         toast('Listed. Your followers were notified.');
-        location.href = `/listing?id=${res.listing.id}`;
+        location.href = withBase(`/listing?id=${res.listing.id}`);
       } catch (err) {
         $('#error').textContent = err.message;
       }

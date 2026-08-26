@@ -30,10 +30,10 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { fetchJson, post, patch, del, auth, invalidate } from '../lib/api.js';
-    import { $, esc, spinner, empty, toast, relative, dateLabel } from '../lib/ui.js';
+    import { $, esc, spinner, empty, toast, relative, dateLabel, withBase } from '../lib/ui.js';
 
     const me = auth.user;
-    if (!me) location.href = '/login';
+    if (!me) location.href = withBase('/login');
 
     async function overview() {
       const o = await fetchJson('/admin/overview');

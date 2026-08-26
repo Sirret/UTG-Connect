@@ -32,6 +32,9 @@ cp .env.example .env
 npm run dev        # http://localhost:4321
 ```
 
+Or just run `start.bat` (Windows) / `start.sh` (Git Bash, WSL, macOS, Linux) from the repo root —
+it installs, seeds and starts both, then opens the site.
+
 Open http://localhost:4321 and sign in from the demo list on the login page.
 Every seeded account uses the password `utgconnect1`.
 
@@ -41,6 +44,33 @@ Every seeded account uses the password `utgconnect1`.
 | `binta.camara@utg.edu.gm` | Buyer with an open rental, a held deposit and a live dispute |
 | `itca.council@utg.edu.gm` | Council account — can post to ITCA and nowhere else |
 | `admin@utg.edu.gm` | Approval queue, dispute rulings, school pages, ban list |
+
+## Deploying (so someone can see it without running anything locally)
+
+GitHub Pages only serves static files — it can't run the Express/SQLite backend. So this is two
+separate deploys that have to be told about each other:
+
+1. **Backend → Render (free).** [render.dashboard.com](https://dashboard.render.com) → **New +** →
+   **Blueprint** → connect this repo. Render reads `render.yaml` at the repo root and provisions
+   the API on its own. When it's live, copy its URL (e.g. `https://utg-connect-api.onrender.com`).
+
+   Free-tier caveat: the disk is ephemeral. The app reseeds the demo campus automatically on every
+   cold start (`backend/src/boot.js`), so it never comes up empty — but anything a visitor adds
+   (a sign-up, a listing, an offer) is lost whenever the free instance spins down from inactivity
+   and comes back up. A persistent disk (Render's paid tier) is what fixes that permanently.
+
+2. **One-time: turn on Pages.** In this repo's **Settings → Pages**, set **Source** to
+   **GitHub Actions**. (Only needed once, ever.)
+
+3. **Point the frontend at the backend.** **Settings → Secrets and variables → Actions →
+   Variables** → add `PUBLIC_API_URL` = the Render URL from step 1, plus `/api`
+   (e.g. `https://utg-connect-api.onrender.com/api`).
+
+4. **Deploy.** Push to `main`, or run the **Deploy frontend to GitHub Pages** workflow manually
+   from the **Actions** tab. The site publishes to `https://<username>.github.io/<repo-name>/`.
+
+Steps 2–4 only need to happen once; after that, every push to `main` that touches `frontend/`
+redeploys automatically. Re-run step 1 (or just let Render redeploy on push) if the backend changes.
 
 ## What is actually built
 
@@ -176,5 +206,7 @@ admin     GET  /admin/overview · /admin/reports · /admin/users
 - Move the token out of `localStorage`.
 - A real payment integration before any deposit money is actually held.
 - Pagination on the feeds — they currently cap at 200 rows.
+- A persistent disk for the database once this isn't just a demo — see the free-tier caveat
+  under "Deploying" above.
 - The concept sheet's own next step: confirm the posting workflow with ICM and SG representatives,
   then pilot with two or three councils so the hub is not empty on day one.

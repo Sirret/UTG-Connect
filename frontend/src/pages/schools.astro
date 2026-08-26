@@ -14,7 +14,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { get, auth, apiBase } from '../lib/api.js';
-    import { $, esc, qs, countdown, kindChip, dateLabel, spinner, empty } from '../lib/ui.js';
+    import { $, esc, qs, countdown, kindChip, dateLabel, spinner, empty, withBase } from '../lib/ui.js';
 
     const code = (qs('code') || auth.user?.schoolCode || 'UTGSU').toUpperCase();
     let tab = qs('tab') || 'feed';
@@ -46,7 +46,7 @@ import Base from '../layouts/Base.astro';
         <div class="mb-1 flex flex-wrap items-center gap-2">
           ${kindChip(p.kind)} ${countdown(p.daysLeft, p.countdown)}
         </div>
-        <h2 class="font-medium"><a href="/post?id=${p.id}" class="hover:underline">${esc(p.title)}</a></h2>
+        <h2 class="font-medium"><a href="${withBase(`/post?id=${p.id}`)}" class="hover:underline">${esc(p.title)}</a></h2>
         ${p.body ? `<p class="mt-1 text-sm text-slate-600">${esc(p.body)}</p>` : ''}
         <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
           ${p.startsAt ? `<span>${esc(dateLabel(p.startsAt))}</span>` : ''}
@@ -61,7 +61,7 @@ import Base from '../layouts/Base.astro';
       const { data } = await get(`/posts?school=${code}&limit=60`);
       const canPost = auth.user && (auth.user.role === 'admin' || (auth.user.role === 'council' && auth.user.schoolCode === code));
       $('#panel').innerHTML = `
-        ${canPost ? `<a href="/compose?school=${code}" class="mb-3 block rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">Post to ${esc(code)}</a>` : ''}
+        ${canPost ? `<a href="${withBase(`/compose?school=${code}`)}" class="mb-3 block rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">Post to ${esc(code)}</a>` : ''}
         <div class="space-y-3">${data.posts.length ? data.posts.map(postCard).join('') : empty('This council has not posted yet.')}</div>`;
     }
 

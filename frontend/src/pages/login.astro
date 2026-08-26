@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import { withBase } from '../lib/ui.js';
 ---
 
 <Base title="Sign in">
@@ -16,7 +17,7 @@ import Base from '../layouts/Base.astro';
   </form>
 
   <p class="mt-3 text-center text-sm text-slate-500">
-    New here? <a href="/signup" class="font-medium text-teal-700">Create an account</a>
+    New here? <a href={withBase('/signup')} class="font-medium text-teal-700">Create an account</a>
   </p>
 
   <!-- Seeded demo logins, so the concept can be walked through without setup. -->
@@ -28,7 +29,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { post, auth } from '../lib/api.js';
-    import { $, esc } from '../lib/ui.js';
+    import { $, esc, withBase } from '../lib/ui.js';
 
     const demos = [
       ['fatou.jallow@utg.edu.gm', 'Student & seller — listings, offers, followers'],
@@ -56,14 +57,14 @@ import Base from '../layouts/Base.astro';
       try {
         const res = await post('/auth/login', data);
         auth.signIn(res.token, { ...res.user, email: data.email });
-        location.href = res.user.role === 'admin' ? '/admin' : '/';
+        location.href = withBase(res.user.role === 'admin' ? '/admin' : '/');
       } catch (err) {
         // Unverified accounts get a one-click path forward in the MVP, since
         // there is no mail server wired up yet.
         if (err.payload?.needsVerification && err.payload?.verifyToken) {
           const res = await post('/auth/verify', { token: err.payload.verifyToken });
           auth.signIn(res.token, { ...res.user, email: data.email });
-          location.href = '/';
+          location.href = withBase('/');
           return;
         }
         $('#error').textContent = err.message;

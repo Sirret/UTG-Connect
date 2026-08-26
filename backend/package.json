@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "description": "UTG Connect MVP API — events hub + student marketplace",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
+    "dev": "node --watch src/boot.js",
+    "start": "node src/boot.js",
     "seed": "node src/seed.js",
     "reset": "node src/seed.js --reset"
   },

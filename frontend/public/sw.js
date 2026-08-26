@@ -4,7 +4,13 @@
  * localStorage by lib/api.js, which is where the real data-saving happens.
  */
 const SHELL = 'utgc-shell-v1';
-const PAGES = ['/', '/market', '/me', '/manifest.webmanifest', '/icon.svg'];
+
+// Derived at runtime from the registration itself, not hardcoded — this file is
+// a plain static asset (unlike the pages, it isn't run through the bundler), so
+// it can't know the deploy's base path ("/" locally, "/repo-name/" on a GitHub
+// Pages project site) any other way.
+const SCOPE = new URL(self.registration.scope).pathname;
+const PAGES = ['', 'market', 'me', 'manifest.webmanifest', 'icon.svg'].map((p) => SCOPE + p);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((c) => c.addAll(PAGES)).then(() => self.skipWaiting()));
@@ -35,7 +41,7 @@ self.addEventListener('fetch', (event) => {
             caches.open(SHELL).then((c) => c.put(request, copy));
             return res;
           })
-          .catch(() => caches.match('/')),
+          .catch(() => caches.match(SCOPE)),
     ),
   );
 });

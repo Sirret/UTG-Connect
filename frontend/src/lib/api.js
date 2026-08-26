@@ -8,6 +8,8 @@
  * so the UI can honestly report how much it saved.
  */
 
+import { withBase } from './ui.js';
+
 const API = import.meta.env.PUBLIC_API_URL || 'http://localhost:4000/api';
 const CACHE_PREFIX = 'utgc:cache:';
 const TOKEN_KEY = 'utgc:token';
@@ -32,7 +34,7 @@ export const auth = {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     clearCache();
-    location.href = '/';
+    location.href = withBase('/');
   },
 };
 

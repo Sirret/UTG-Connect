@@ -3,6 +3,16 @@
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+/**
+ * Prefixes an app-internal path with the deploy's base path. Astro's `base`
+ * config auto-prefixes its own JS/CSS bundle URLs, but every hand-written
+ * `href="/market"` in these pages needs this explicitly — otherwise the site
+ * works at the root ("/") but 404s once it's served from a subpath, as
+ * GitHub Pages does for a project site ("/repo-name/").
+ */
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+export const withBase = (path) => BASE + (path.startsWith('/') ? path : `/${path}`);
+
 export const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 

@@ -1,0 +1,31 @@
+# Render Blueprint — hosts the API (backend/) as a free Node web service.
+# In the Render dashboard: New + -> Blueprint -> connect this repo -> Apply.
+# See README.md "Deploying" for the full step-by-step, including the one thing
+# that has to happen after this (pointing the GitHub Pages build at the URL
+# Render gives you).
+services:
+  - type: web
+    name: utg-connect-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: UNIVERSITY_EMAIL_DOMAIN
+        value: utg.edu.gm
+      - key: DEV_RETURN_VERIFY_TOKEN
+        value: 'true'
+      - key: ALLOW_ANY_EMAIL
+        value: 'false'
+      - key: REQUIRE_POST_APPROVAL
+        value: 'true'
+      - key: DEPOSIT_THRESHOLD
+        value: '1000'
+      # The GitHub Pages origin(s) allowed to call this API. Update if you fork
+      # the repo or rename it — CORS checks the exact origin, not the path.
+      - key: CORS_ORIGINS
+        value: https://sirret.github.io

@@ -7,7 +7,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { fetchJson, apiBase } from '../lib/api.js';
-    import { $, esc, qs, countdown, kindChip, dateLabel, relative, spinner } from '../lib/ui.js';
+    import { $, esc, qs, countdown, kindChip, dateLabel, relative, spinner, withBase } from '../lib/ui.js';
 
     const id = qs('id');
     $('#view').innerHTML = spinner();
@@ -15,7 +15,7 @@ import Base from '../layouts/Base.astro';
     fetchJson(`/posts/${id}`)
       .then(({ post: p }) => {
         $('#view').innerHTML = `
-        <a href="/schools?code=${esc(p.school.code)}" class="mb-3 inline-block rounded px-2 py-1 text-xs font-bold text-white"
+        <a href="${withBase(`/schools?code=${esc(p.school.code)}`)}" class="mb-3 inline-block rounded px-2 py-1 text-xs font-bold text-white"
            style="background:${esc(p.school.color)}">${esc(p.school.code)} — ${esc(p.school.name)}</a>
 
         <div class="mb-2 flex flex-wrap items-center gap-2">

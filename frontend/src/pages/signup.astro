@@ -28,7 +28,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { get, post, auth } from '../lib/api.js';
-    import { $, esc } from '../lib/ui.js';
+    import { $, esc, withBase } from '../lib/ui.js';
 
     get('/schools').then(({ data }) => {
       $('#schools').innerHTML = data.schools
@@ -55,7 +55,7 @@ import Base from '../layouts/Base.astro';
         $('#do-verify')?.addEventListener('click', async () => {
           const v = await post('/auth/verify', { token: res.verifyToken });
           auth.signIn(v.token, { ...v.user, email: body.email });
-          location.href = '/';
+          location.href = withBase('/');
         });
         $('#form').reset();
       } catch (err) {

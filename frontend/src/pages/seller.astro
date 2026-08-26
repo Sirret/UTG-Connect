@@ -7,7 +7,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { fetchJson, post, auth } from '../lib/api.js';
-    import { $, esc, money, qs, spinner, toast, empty } from '../lib/ui.js';
+    import { $, esc, money, qs, spinner, toast, empty, withBase } from '../lib/ui.js';
 
     const username = qs('u');
     const me = auth.user;
@@ -58,7 +58,7 @@ import Base from '../layouts/Base.astro';
               ? listings
                   .map(
                     (l) => `
-            <a href="/listing?id=${l.id}" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <a href="${withBase(`/listing?id=${l.id}`)}" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <img src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" width="300" height="300" class="aspect-square w-full object-cover" />
               <div class="p-2">
                 <p class="line-clamp-2 text-sm leading-snug">${esc(l.title)}</p>

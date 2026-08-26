@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { withBase } from '../lib/ui.js';
 
 interface Props {
   title: string;
@@ -8,9 +9,9 @@ interface Props {
 const { title, active = '' } = Astro.props;
 
 const nav = [
-  { href: '/', label: 'Hub', key: 'hub' },
-  { href: '/market', label: 'Market', key: 'market' },
-  { href: '/me', label: 'You', key: 'me' },
+  { href: withBase('/'), label: 'Hub', key: 'hub' },
+  { href: withBase('/market'), label: 'Market', key: 'market' },
+  { href: withBase('/me'), label: 'You', key: 'me' },
 ];
 ---
 
@@ -21,13 +22,13 @@ const nav = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="UTG Connect — one place for school events, deadlines and the student marketplace." />
     <meta name="theme-color" content="#0f766e" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href={withBase('/manifest.webmanifest')} />
     <title>{title} · UTG Connect</title>
   </head>
   <body class="min-h-dvh pb-20">
     <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-        <a href="/" class="font-semibold tracking-tight text-teal-700">UTG&nbsp;Connect</a>
+        <a href={withBase('/')} class="font-semibold tracking-tight text-teal-700">UTG&nbsp;Connect</a>
         <nav class="ml-auto flex items-center gap-1 text-sm">
           {
             nav.map((item) => (
@@ -58,13 +59,13 @@ const nav = [
 
     <script>
       import { auth, cacheStats } from '../lib/api.js';
-      import { $ } from '../lib/ui.js';
+      import { $, withBase } from '../lib/ui.js';
 
       const slot = $('#nav-auth');
       const user = auth.user;
       slot.innerHTML = user
         ? `<button id="signout" class="rounded-md px-3 py-1.5 text-slate-500 hover:bg-slate-100" title="${user.email || user.username}">${user.username}</button>`
-        : `<a href="/login" class="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white">Sign in</a>`;
+        : `<a href="${withBase('/login')}" class="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white">Sign in</a>`;
       $('#signout')?.addEventListener('click', () => auth.signOut());
 
       // Honest reporting of what the on-device cache is doing, so the caching
@@ -80,7 +81,7 @@ const nav = [
       });
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register(withBase('/sw.js')).catch(() => {});
       }
     </script>
   </body>

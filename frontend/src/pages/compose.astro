@@ -39,10 +39,10 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { get, post, auth, invalidate } from '../lib/api.js';
-    import { $, esc, qs, toast } from '../lib/ui.js';
+    import { $, esc, qs, toast, withBase } from '../lib/ui.js';
 
     const me = auth.user;
-    if (!me) location.href = '/login';
+    if (!me) location.href = withBase('/login');
 
     // Only the official council account for a school may post to that page.
     if (me && me.role !== 'council' && me.role !== 'admin') {
@@ -83,7 +83,7 @@ import Base from '../layouts/Base.astro';
           });
           invalidate('/posts', '/schools');
           toast(res.awaitingApproval ? 'Sent for approval — an admin will check it shortly.' : 'Posted.');
-          setTimeout(() => (location.href = `/schools?code=${f.get('schoolCode')}`), 900);
+          setTimeout(() => (location.href = withBase(`/schools?code=${f.get('schoolCode')}`)), 900);
         } catch (err) {
           $('#error').textContent = err.message;
         }
