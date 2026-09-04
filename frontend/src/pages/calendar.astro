@@ -1,0 +1,218 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Calendar" active="calendar">
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="flex rounded-lg bg-slate-200 p-0.5 text-xs sm:text-sm">
+      <button data-view="all" class="view rounded-md px-2.5 py-1.5 font-medium sm:px-3">All events</button>
+      <button data-view="mine" class="view rounded-md px-2.5 py-1.5 font-medium sm:px-3">My calendar</button>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <button id="today" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:px-2.5">Today</button>
+      <button id="prev" class="grid h-8 w-7 shrink-0 place-items-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 sm:w-8" aria-label="Previous month">‹</button>
+      <span id="month-label" class="min-w-[92px] shrink-0 text-center text-xs font-semibold text-navy-deep sm:min-w-[120px] sm:text-sm"></span>
+      <button id="next" class="grid h-8 w-7 shrink-0 place-items-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 sm:w-8" aria-label="Next month">›</button>
+    </div>
+  </div>
+
+  <div id="grid" class="mb-5 rounded-2xl border border-slate-200 bg-white p-3"></div>
+
+  <div id="agenda"></div>
+
+  <script>
+    import { get, fetchJson, post, auth, apiBase, invalidate } from '../lib/api.js';
+    import { $, $$, esc, countdown, kindChip, dateLabel, spinner, empty, postActions, bindPostActions, withBase } from '../lib/ui.js';
+
+    const user = auth.user;
+    if (!user) location.href = withBase('/login');
+
+    let view = 'all';
+    const cursor = new Date();
+    cursor.setDate(1);
+    let selectedDay = null;
+    let allPosts = [];
+
+    bindPostActions($('#agenda'), post, {
+      signedIn: !!user,
+      onToggle: (id, interested) => {
+        const p = allPosts.find((x) => x.id === id);
+        if (p) p.interested = interested;
+        if (view === 'mine' && !interested) allPosts = allPosts.filter((x) => x.id !== id);
+        invalidate('/posts');
+        renderGrid();
+        if (view === 'mine' && !interested) renderAgenda();
+      },
+    });
+
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    function groupByDay(posts) {
+      const map = new Map();
+      for (const p of posts) {
+        if (!p.startsAt) continue;
+        const key = ymd(new Date(p.startsAt));
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(p);
+      }
+      for (const list of map.values()) list.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+      return map;
+    }
+
+    async function loadPosts() {
+      if (view === 'mine') {
+        if (!user) {
+          allPosts = [];
+          return;
+        }
+        const { posts } = await fetchJson('/me/calendar');
+        allPosts = posts;
+      } else {
+        const { data } = await get('/posts?school=all&limit=200');
+        allPosts = data.posts.filter((p) => p.startsAt);
+      }
+    }
+
+    function syncViewButtons() {
+      $$('.view').forEach((b) => {
+        const on = b.dataset.view === view;
+        b.className = `view rounded-md px-3 py-1.5 font-medium ${on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`;
+        b.disabled = b.dataset.view === 'mine' && !user;
+        if (b.disabled) b.title = 'Sign in to build a personal calendar';
+      });
+    }
+
+    function renderGrid() {
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth();
+      const startWeekday = new Date(y, m, 1).getDay();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const todayKey = ymd(new Date());
+      const byDay = groupByDay(allPosts);
+
+      const cells = [];
+      for (let i = 0; i < startWeekday; i++) cells.push(null);
+      for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+      while (cells.length % 7 !== 0) cells.push(null);
+
+      // 2023-01-01 was a Sunday — a fixed, known reference to read weekday names off.
+      const weekdayNames = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, i + 1).toLocaleDateString(undefined, { weekday: 'short' }));
+
+      $('#month-label').textContent = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+      $('#grid').innerHTML = `
+        <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          ${weekdayNames.map((w) => `<div class="py-1">${w}</div>`).join('')}
+        </div>
+        <div class="grid grid-cols-7 gap-1">
+          ${cells
+            .map((d) => {
+              if (!d) return `<div></div>`;
+              const key = ymd(new Date(y, m, d));
+              const items = byDay.get(key) || [];
+              const isToday = key === todayKey;
+              const isSelected = key === selectedDay;
+              const dots = items
+                .slice(0, 3)
+                .map((p) => `<span class="h-1.5 w-1.5 rounded-full" style="background:${esc(p.school.color)}"></span>`)
+                .join('');
+              const tone = isSelected
+                ? 'bg-navy text-white font-bold'
+                : isToday
+                  ? 'bg-navy/10 font-bold text-navy-deep'
+                  : items.length
+                    ? 'text-slate-800 hover:bg-slate-100'
+                    : 'text-slate-400 hover:bg-slate-50';
+              return `
+              <button data-day="${key}" class="day flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-sm ${tone}">
+                <span>${d}</span>
+                ${items.length ? `<span class="flex gap-0.5">${dots}</span>` : ''}
+              </button>`;
+            })
+            .join('')}
+        </div>`;
+
+      $$('.day').forEach((b) =>
+        b.addEventListener('click', () => {
+          selectedDay = b.dataset.day;
+          renderGrid();
+          renderAgenda();
+        }),
+      );
+    }
+
+    function renderAgenda() {
+      const host = $('#agenda');
+      if (!selectedDay) {
+        host.innerHTML = empty('Tap a day with a dot to see what is on.');
+        return;
+      }
+      const items = groupByDay(allPosts).get(selectedDay) || [];
+      const label = new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
+      if (!items.length) {
+        host.innerHTML = `<p class="mb-2 text-sm font-semibold text-slate-700">${esc(label)}</p>${empty(view === 'mine' ? 'Nothing on your calendar this day.' : 'Nothing posted for this day.')}`;
+        return;
+      }
+
+      host.innerHTML = `
+        <p class="mb-2 text-sm font-semibold text-slate-700">${esc(label)}</p>
+        <div class="space-y-2">
+          ${items
+            .map(
+              (p) => `
+            <article class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-1 flex flex-wrap items-center gap-1.5">
+                <a href="${withBase(`/schools?code=${esc(p.school.code)}`)}" class="rounded px-1.5 py-0.5 text-[10px] font-bold text-white" style="background:${esc(p.school.color)}">${esc(p.school.code)}</a>
+                ${kindChip(p.kind)}
+                ${countdown(p.daysLeft, p.countdown)}
+              </div>
+              <h3 class="text-sm font-semibold leading-tight"><a href="${withBase(`/post?id=${p.id}`)}" class="hover:underline">${esc(p.title)}</a></h3>
+              <p class="mt-0.5 text-xs text-slate-500">${esc(dateLabel(p.startsAt))}${p.location ? ` · ${esc(p.location)}` : ''}</p>
+              <div class="mt-2">${postActions(p, `${apiBase}/posts/${p.id}/calendar.ics`)}</div>
+            </article>`,
+            )
+            .join('')}
+        </div>`;
+    }
+
+    async function refresh() {
+      $('#grid').innerHTML = spinner();
+      await loadPosts();
+      renderGrid();
+      renderAgenda();
+    }
+
+    $$('.view').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (b.dataset.view === 'mine' && !user) return;
+        view = b.dataset.view;
+        selectedDay = null;
+        syncViewButtons();
+        refresh();
+      }),
+    );
+    $('#prev').addEventListener('click', () => {
+      cursor.setMonth(cursor.getMonth() - 1);
+      selectedDay = null;
+      renderGrid();
+      renderAgenda();
+    });
+    $('#next').addEventListener('click', () => {
+      cursor.setMonth(cursor.getMonth() + 1);
+      selectedDay = null;
+      renderGrid();
+      renderAgenda();
+    });
+    $('#today').addEventListener('click', () => {
+      cursor.setFullYear(new Date().getFullYear(), new Date().getMonth(), 1);
+      selectedDay = ymd(new Date());
+      renderGrid();
+      renderAgenda();
+    });
+
+    selectedDay = ymd(new Date());
+    syncViewButtons();
+    refresh();
+  </script>
+</Base>

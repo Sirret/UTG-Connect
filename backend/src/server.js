@@ -12,6 +12,10 @@ import { sellerRoutes, storyRoutes } from './routes/sellers.js';
 import { rentalRoutes, reportRoutes } from './routes/rentals.js';
 import { meRoutes } from './routes/me.js';
 import { adminRoutes } from './routes/admin.js';
+import { socialRoutes } from './routes/social.js';
+import { uploadsRoutes } from './routes/uploads.js';
+import { campusStoryRoutes } from './routes/campusStories.js';
+import { messageRoutes } from './routes/messages.js';
 
 const app = express();
 
@@ -27,6 +31,7 @@ app.use(
 );
 app.use(express.json({ limit: '256kb' }));
 app.use(attachUser);
+app.use('/uploads', express.static(config.uploadsDir));
 
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, service: 'utg-connect-api', time: new Date().toISOString() }),
@@ -43,6 +48,10 @@ app.use('/api/rentals', rentalRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/me', meRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/social', socialRoutes);
+app.use('/api/uploads', uploadsRoutes);
+app.use('/api/school-stories', campusStoryRoutes);
+app.use('/api/messages', messageRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'No such endpoint' }));
 

@@ -1,0 +1,61 @@
+---
+import { withBase } from '../lib/ui.js';
+
+interface Props {
+  heading: string;
+  tagline?: string;
+}
+const {
+  heading,
+  tagline = 'Council notices, deadlines and the student market — every school at UTG, even on a bad connection.',
+} = Astro.props;
+---
+
+<!--
+  The one full-bleed photo in the app, reserved for this entry screen — a real
+  shot of the Faraba Banta campus rather than a stock crowd photo, tinted from
+  navy (the crest) down to red (the roofline) so the brand still reads even
+  before anything has loaded.
+-->
+<section class="relative min-h-[38dvh] overflow-hidden bg-navy sm:min-h-dvh" aria-label="University of The Gambia, Faraba Banta campus">
+  <img
+    src={withBase('/images/campus-aerial.jpg')}
+    alt="Aerial view of the UTG Faraba Banta campus"
+    width="1360"
+    height="1024"
+    class="absolute inset-0 h-full w-full object-cover"
+    style="object-position:52% 42%"
+    fetchpriority="high"
+  />
+  <div
+    class="absolute inset-0"
+    style="background:linear-gradient(180deg, rgba(24,30,92,.6) 0%, rgba(24,30,92,.1) 28%, rgba(70,32,52,.4) 46%, rgba(235,63,40,.82) 62%, #EB3F28 76%, #EB3F28 100%)"
+  >
+  </div>
+
+  <div class="relative flex h-full min-h-[38dvh] flex-col justify-between gap-8 p-5 sm:min-h-dvh sm:p-10">
+    <div class="flex items-center gap-2.5 text-white">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" class="shrink-0 drop-shadow-md">
+        <rect width="34" height="34" rx="9" fill="#232B7E"></rect>
+        <path
+          d="M5 12 L10 7.5 L10 12 L15 7.5 L15 12 L20 7.5 L20 12 L25 7.5 L25 12 L29 12"
+          fill="none"
+          stroke="#EB3F28"
+          stroke-width="2.6"
+          stroke-linejoin="round"
+          stroke-linecap="round"></path>
+        <text x="17" y="27" text-anchor="middle" font-family="'Plus Jakarta Sans', sans-serif" font-size="12" font-weight="800" fill="#FFFFFF">UTG</text>
+      </svg>
+      <div class="leading-tight">
+        <b class="block text-[15px] font-extrabold tracking-tight drop-shadow-sm">UTG Connect</b>
+        <small class="block text-[10px] font-semibold uppercase tracking-[0.16em] text-white/85">University of The Gambia</small>
+      </div>
+    </div>
+
+    <div class="max-w-md text-white">
+      <h1 class="text-[26px] font-extrabold leading-[1.15] tracking-tight drop-shadow-sm sm:text-[36px]">{heading}</h1>
+      <p class="mt-2 hidden text-[13.5px] leading-relaxed text-white/90 drop-shadow-sm sm:block">{tagline}</p>
+      <p class="mt-4 hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3A120A]/80 sm:block">Faraba Banta campus, from above</p>
+    </div>
+  </div>
+</section>

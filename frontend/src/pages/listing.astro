@@ -7,7 +7,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { fetchJson, post, auth, invalidate } from '../lib/api.js';
-    import { $, esc, money, qs, spinner, toast, relative, withBase } from '../lib/ui.js';
+    import { $, esc, money, qs, spinner, toast, relative, listingCover, withBase } from '../lib/ui.js';
 
     const id = qs('id');
     const me = auth.user;
@@ -18,8 +18,7 @@ import Base from '../layouts/Base.astro';
       const mine = me && me.id === l.seller.id;
 
       $('#view').innerHTML = `
-        <img src="${esc(l.imageUrl)}" alt="${esc(l.title)}" width="600" height="600" decoding="async"
-             class="mb-4 aspect-square w-full rounded-xl object-cover" />
+        <div class="mb-4 aspect-square w-full overflow-hidden rounded-xl bg-slate-100">${listingCover(l)}</div>
 
         <div class="flex items-start gap-3">
           <div class="flex-1">
@@ -76,6 +75,13 @@ import Base from '../layouts/Base.astro';
         </a>
 
         <div class="mt-4 space-y-2">
+          ${
+            !mine && me
+              ? `<a href="${withBase(`/messages?with=${l.seller.id}`)}" class="block rounded-lg border border-navy px-4 py-2.5 text-center text-sm font-medium text-navy">
+                   Message seller on UTG Connect
+                 </a>`
+              : ''
+          }
           ${
             l.whatsappLink && !mine
               ? `<a href="${esc(l.whatsappLink)}" target="_blank" rel="noopener"

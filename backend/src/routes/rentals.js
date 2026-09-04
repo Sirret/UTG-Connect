@@ -6,7 +6,7 @@ import { bad, forbidden, need, notFound, notify, oneOf, toIso, toSqlTime, token,
 export const rentalRoutes = Router();
 
 const SELECT_RENTAL = `
-  SELECT r.*, l.title, l.currency, l.image_url, l.pickup_point,
+  SELECT r.*, l.title, l.currency, l.image_url, l.pickup_point, l.category, l.section,
          lender.name AS lender_name, lender.username AS lender_username,
          borrower.name AS borrower_name, borrower.username AS borrower_username
   FROM rentals r
@@ -20,6 +20,8 @@ const shapeRental = (r, photos = []) => ({
   listingId: r.listing_id,
   title: r.title,
   imageUrl: r.image_url,
+  category: r.category,
+  section: r.section,
   pickupPoint: r.pickup_point,
   currency: r.currency,
   amount: r.amount,

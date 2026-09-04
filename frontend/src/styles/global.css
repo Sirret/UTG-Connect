@@ -1,11 +1,73 @@
 @import 'tailwindcss';
 
-/* Deliberately plain. This MVP exists to test whether the concept holds up,
-   not to settle on a visual identity — so: system fonts, no web fonts, no
-   decorative imagery, nothing that costs bandwidth. */
+/* =====================================================================
+   UTG CONNECT — house style
+   Navy (crest) + red (roofline) on a cool-toned paper background, set in
+   Plus Jakarta Sans. The app is built almost entirely from Tailwind
+   utility classes rather than custom components, so instead of rewriting
+   every page, the brand is applied by remapping the two neutral/accent
+   scales the pages already reach for:
+     - `slate-*`  → the ink/paper/hairline system (backgrounds, borders, text)
+     - `teal-*`   → navy (every `bg-teal-700` button and `text-teal-700`
+                    link becomes navy without touching a single page)
+     - `red-*`    → the brand red, tuned a shade darker than the pure
+                    swatch so error text still clears 4.5:1 on white
+   `amber` / `emerald` / `sky` / `rose` stay Tailwind's defaults — they're
+   the semantic traffic-light colours (deadline soon / done / info /
+   payment), not brand colours, and don't appear in the reference designs.
+   ===================================================================== */
 @theme {
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Brand anchors, for hand-written markup (header, crest, roofline). */
+  --color-navy: #232b7e;
+  --color-navy-deep: #181e5c;
+  --color-navy-light: #4a529e;
+  --color-paper: #fafafc;
+  --color-hairline: #e3e6ef;
+  --color-brand-red: #eb3f28;
+  --color-brand-red-deep: #c22d18;
+
+  /* Neutral scale → ink/paper/hairline. */
+  --color-slate-50: #fafafc;
+  --color-slate-100: #f0f2f9;
+  --color-slate-200: #e1e4f0;
+  --color-slate-300: #c7cce3;
+  --color-slate-400: #9298b9;
+  --color-slate-500: #6b7096;
+  --color-slate-600: #4b5178;
+  --color-slate-700: #363b5e;
+  --color-slate-800: #262a47;
+  --color-slate-900: #1c2143;
+  --color-slate-950: #12142b;
+
+  /* Accent scale → navy. This is the app's one interactive colour:
+     every primary button and link. */
+  --color-teal-50: #eef0fb;
+  --color-teal-100: #dfe2f6;
+  --color-teal-200: #c3c8ed;
+  --color-teal-300: #9da5dc;
+  --color-teal-400: #6e77c0;
+  --color-teal-500: #4a529e;
+  --color-teal-600: #323a8e;
+  --color-teal-700: #232b7e;
+  --color-teal-800: #1e2569;
+  --color-teal-900: #181e5c;
+  --color-teal-950: #0f1338;
+
+  /* Danger scale → brand red (darkened slightly for AA text contrast). */
+  --color-red-50: #fdf1ee;
+  --color-red-100: #fbdfd9;
+  --color-red-200: #f6c1b7;
+  --color-red-300: #ee9c8c;
+  --color-red-400: #e5735c;
+  --color-red-500: #de5339;
+  --color-red-600: #d93a22;
+  --color-red-700: #c22d18;
+  --color-red-800: #9c2513;
+  --color-red-900: #7c1f11;
+  --color-red-950: #430d07;
 }
 
 html {
@@ -20,4 +82,27 @@ body {
    box and loads lazily. */
 img {
   @apply bg-slate-200;
+}
+
+/* The one recurring interactive detail borrowed from the reference designs:
+   a soft navy glow on focus, applied globally so no page needs to opt in. */
+input,
+select,
+textarea {
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 4px rgba(35, 43, 126, 0.14);
+}
+
+/* A thin sawtooth strip in the brand red — Faraba Banta's roofline, the
+   one recurring graphic motif. Pure vector, so it costs nothing to ship. */
+.roofline {
+  display: block;
+  width: 100%;
+  height: 7px;
 }

@@ -1,0 +1,97 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Messages" active="me">
+  <div id="view"></div>
+
+  <script>
+    import { fetchJson, post, auth } from '../lib/api.js';
+    import { $, esc, qs, relative, spinner, empty, withBase } from '../lib/ui.js';
+
+    const me = auth.user;
+    if (!me) location.href = withBase('/login');
+
+    const initials = (name) =>
+      (name || '')
+        .trim()
+        .split(/\s+/)
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+
+    async function renderInbox() {
+      $('#view').innerHTML = `<h1 class="mb-4 text-lg font-extrabold text-navy-deep">Messages</h1><div id="list">${spinner()}</div>`;
+      const { conversations } = await fetchJson('/messages');
+      $('#list').innerHTML = conversations.length
+        ? `<div class="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+             ${conversations
+               .map(
+                 (c) => `
+               <a href="${withBase(`/messages?with=${c.with.id}`)}" class="flex items-center gap-3 p-3.5 hover:bg-slate-50">
+                 <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-navy text-sm font-bold text-white">${esc(initials(c.with.name))}</span>
+                 <div class="min-w-0 flex-1">
+                   <p class="truncate text-sm font-bold text-slate-900">${esc(c.with.name)}</p>
+                   <p class="truncate text-xs text-slate-500">${esc(c.lastMessage)}</p>
+                 </div>
+                 <div class="flex shrink-0 flex-col items-end gap-1">
+                   <span class="text-[11px] text-slate-400">${esc(relative(c.lastAt))}</span>
+                   ${c.unread ? `<span class="grid h-5 min-w-5 place-items-center rounded-full bg-brand-red px-1 text-[10px] font-bold text-white">${c.unread}</span>` : ''}
+                 </div>
+               </a>`,
+               )
+               .join('')}
+           </div>`
+        : empty('No conversations yet — message a council from a story, or a seller from a listing.');
+    }
+
+    async function renderThread(otherId) {
+      $('#view').innerHTML = `
+        <a href="${withBase('/messages')}" class="mb-3 inline-block text-sm font-semibold text-navy">← All messages</a>
+        <div id="thread-head" class="mb-3"></div>
+        <div id="thread" class="space-y-2 pb-4">${spinner()}</div>
+        <form id="reply" class="sticky bottom-20 flex gap-2 rounded-full border border-slate-200 bg-white p-1.5 shadow-lg sm:bottom-4">
+          <input name="body" placeholder="Message…" class="min-w-0 flex-1 rounded-full px-3 py-1.5 text-sm outline-none" />
+          <button class="shrink-0 rounded-full bg-navy px-4 py-1.5 text-sm font-semibold text-white">Send</button>
+        </form>`;
+
+      const { with: other, messages } = await fetchJson(`/messages/${otherId}`);
+      $('#thread-head').innerHTML = `
+        <div class="flex items-center gap-2.5">
+          <span class="grid h-9 w-9 place-items-center rounded-full bg-navy text-xs font-bold text-white">${esc(initials(other.name))}</span>
+          <div>
+            <p class="text-sm font-bold text-slate-900">${esc(other.name)}</p>
+            <p class="text-xs text-slate-400">@${esc(other.username)}</p>
+          </div>
+        </div>`;
+      $('#thread').innerHTML = messages.length
+        ? messages
+            .map(
+              (m) => `
+          <div class="flex ${m.mine ? 'justify-end' : 'justify-start'}">
+            <p class="max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.mine ? 'bg-navy text-white' : 'bg-slate-100 text-slate-800'}">${esc(m.body)}</p>
+          </div>`,
+            )
+            .join('')
+        : empty('Say hello.');
+
+      $('#reply').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = e.target.body;
+        const body = input.value.trim();
+        if (!body) return;
+        await post(`/messages/${otherId}`, { body });
+        input.value = '';
+        $('#thread').innerHTML += `
+          <div class="flex justify-end">
+            <p class="max-w-[75%] rounded-2xl bg-navy px-3.5 py-2 text-sm text-white">${esc(body)}</p>
+          </div>`;
+      });
+    }
+
+    const withId = qs('with');
+    if (withId) renderThread(withId);
+    else renderInbox();
+  </script>
+</Base>

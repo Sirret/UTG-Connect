@@ -1,30 +1,54 @@
 ---
 import Base from '../layouts/Base.astro';
+import AuthScene from '../components/AuthScene.astro';
 ---
 
-<Base title="Sign up">
-  <h1 class="mb-1 text-lg font-semibold">Create your account</h1>
-  <p class="mb-4 text-sm text-slate-500">
-    Only UTG students can join — verification runs off your university email address, which is also what keeps
-    the marketplace non-anonymous.
-  </p>
+<Base title="Sign up" full>
+  <div class="grid min-h-dvh grid-cols-1 sm:grid-cols-[1.1fr_minmax(380px,0.9fr)]">
+    <AuthScene
+      heading="Only UTG students in here."
+      tagline="Verification runs off your university email, which is also what keeps the marketplace non-anonymous."
+    />
 
-  <form id="form" class="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-    <input name="name" required placeholder="Full name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-    <input name="username" required placeholder="Username (how buyers find you)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-    <input name="email" type="email" required placeholder="you@utg.edu.gm" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-    <input name="password" type="password" required minlength="8" placeholder="Password (8+ characters)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-    <input name="whatsapp" placeholder="WhatsApp number (optional — used for the Message Seller button)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <div class="flex items-center justify-center px-5 py-10 sm:px-10">
+      <div class="w-full max-w-sm">
+        <h1 class="text-[26px] font-extrabold tracking-tight text-navy-deep">Create your account</h1>
+        <svg width="72" height="8" viewBox="0 0 72 8" class="my-2" aria-hidden="true">
+          <path
+            d="M1 7 L7 1.5 L13 7 L19 1.5 L25 7 L31 1.5 L37 7 L43 1.5 L49 7 L55 1.5 L61 7 L67 1.5 L72 7"
+            fill="none"
+            stroke="#EB3F28"
+            stroke-width="2"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+          />
+        </svg>
+        <p class="mb-5 text-sm text-slate-600">
+          Only UTG students can join — verification runs off your university email address, which is also what keeps
+          the marketplace non-anonymous.
+        </p>
 
-    <label class="block text-sm font-medium">Your school</label>
-    <p class="-mt-2 text-xs text-slate-500">This becomes your default view, so the app opens on what is relevant to you.</p>
-    <select name="schoolCode" required id="schools" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+        <form id="form" class="space-y-3">
+          <input name="name" required placeholder="Full name" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm" />
+          <input name="username" required placeholder="Username (how buyers find you)" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm" />
+          <input name="email" type="email" required placeholder="you@utg.edu.gm" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm" />
+          <input name="password" type="password" required minlength="8" placeholder="Password (8+ characters)" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm" />
+          <input name="whatsapp" placeholder="WhatsApp number (optional)" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm" />
 
-    <button class="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white">Create account</button>
-    <p id="error" class="text-sm text-red-600"></p>
-  </form>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700">Your school</label>
+            <p class="mt-0.5 text-xs text-slate-500">This becomes your default view, so the app opens on what is relevant to you.</p>
+            <select name="schoolCode" required id="schools" class="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm"></select>
+          </div>
 
-  <div id="verify" class="mt-4"></div>
+          <button class="w-full rounded-lg bg-navy px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-deep">Create account</button>
+          <p id="error" class="text-sm text-red-600"></p>
+        </form>
+
+        <div id="verify" class="mt-4"></div>
+      </div>
+    </div>
+  </div>
 
   <script>
     import { get, post, auth } from '../lib/api.js';

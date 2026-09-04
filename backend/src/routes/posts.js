@@ -21,7 +21,7 @@ export const postRoutes = Router();
 
 const KINDS = ['event', 'deadline', 'payment', 'announcement'];
 
-const shapePost = (p) => ({
+export const shapePost = (p, opts = {}) => ({
   id: p.id,
   title: p.title,
   body: p.body,
@@ -30,6 +30,8 @@ const shapePost = (p) => ({
   endsAt: toIso(p.ends_at),
   location: p.location,
   imageUrl: p.image_url,
+  documentUrl: p.document_url,
+  documentName: p.document_name,
   status: p.status,
   createdAt: toIso(p.created_at),
   updatedAt: toIso(p.updated_at),
@@ -38,7 +40,15 @@ const shapePost = (p) => ({
   daysLeft: daysUntil(p.starts_at),
   countdown: countdownLabel(p.starts_at),
   timeSensitive: p.kind !== 'announcement' && !!p.starts_at,
+  interested: !!opts.interested,
 });
+
+/** Which of these post ids the signed-in viewer has already added to their
+ * personal calendar — same shape as `saves`' per-viewer flag in listings.js. */
+const interestedSet = (req) =>
+  req.user
+    ? new Set(all('SELECT post_id FROM post_interests WHERE user_id = ?', [req.user.id]).map((r) => r.post_id))
+    : new Set();
 
 const SELECT_POST = `
   SELECT p.*, s.code AS school_code, s.name AS school_name, s.color AS school_color,
@@ -100,7 +110,10 @@ postRoutes.get(
       `${SELECT_POST} WHERE ${where.join(' AND ')} ${URGENCY_ORDER} LIMIT ?`,
       [...params, Math.min(Number(limit) || 50, 200)],
     );
-    sendCached(req, res, { posts: rows.map(shapePost) }, 30, { syncedAt: new Date().toISOString() });
+    const interested = interestedSet(req);
+    sendCached(req, res, { posts: rows.map((p) => shapePost(p, { interested: interested.has(p.id) })) }, 30, {
+      syncedAt: new Date().toISOString(),
+    });
   }),
 );
 
@@ -127,11 +140,12 @@ postRoutes.get(
                AND p.starts_at BETWEEN datetime('now') AND datetime('now', '+30 days')
              ORDER BY p.starts_at ASC`,
           );
+    const interested = interestedSet(req);
     sendCached(req, res, {
       window,
       title: window === 'week' ? 'This Week at UTG' : 'This Month at UTG',
       count: rows.length,
-      items: rows.map(shapePost),
+      items: rows.map((p) => shapePost(p, { interested: interested.has(p.id) })),
     }, 300);
   }),
 );
@@ -141,7 +155,27 @@ postRoutes.get(
   wrap((req, res) => {
     const post = get(`${SELECT_POST} WHERE p.id = ? AND p.deleted = 0`, [req.params.id]);
     if (!post) throw notFound('Post not found');
-    res.json({ post: shapePost(post) });
+    const interested = req.user
+      ? !!get('SELECT 1 AS x FROM post_interests WHERE user_id = ? AND post_id = ?', [req.user.id, post.id])
+      : false;
+    res.json({ post: shapePost(post, { interested }) });
+  }),
+);
+
+/** Toggle this post on/off the signed-in student's personal calendar. */
+postRoutes.post(
+  '/:id/interest',
+  requireAuth,
+  wrap((req, res) => {
+    const post = get('SELECT id FROM posts WHERE id = ? AND deleted = 0', [req.params.id]);
+    if (!post) throw notFound('Post not found');
+    const existing = get('SELECT 1 AS x FROM post_interests WHERE user_id = ? AND post_id = ?', [req.user.id, post.id]);
+    if (existing) {
+      run('DELETE FROM post_interests WHERE user_id = ? AND post_id = ?', [req.user.id, post.id]);
+      return res.json({ interested: false });
+    }
+    run('INSERT INTO post_interests (user_id, post_id) VALUES (?, ?)', [req.user.id, post.id]);
+    res.json({ interested: true });
   }),
 );
 
@@ -194,8 +228,8 @@ postRoutes.post(
     const status = req.user.role === 'admin' || !config.requirePostApproval ? 'published' : 'pending';
 
     const info = run(
-      `INSERT INTO posts (school_id, author_id, title, body, kind, starts_at, ends_at, location, image_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO posts (school_id, author_id, title, body, kind, starts_at, ends_at, location, image_url, document_url, document_name, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         school.id,
         req.user.id,
@@ -206,6 +240,8 @@ postRoutes.post(
         toSqlTime(req.body.endsAt),
         req.body.location || null,
         req.body.imageUrl || null,
+        req.body.documentUrl || null,
+        req.body.documentName || null,
         status,
       ],
     );

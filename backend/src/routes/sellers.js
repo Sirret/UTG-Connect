@@ -178,6 +178,8 @@ storyRoutes.post(
   '/',
   requireAuth,
   wrap((req, res) => {
+    const canSell = req.user.role === 'council' || (req.user.role === 'student' && req.user.is_seller);
+    if (!canSell) throw bad('Only sellers post a status here — become a seller first');
     need(req.body, 'text');
     if (String(req.body.text).length > 60) throw bad('Keep a story under 60 characters');
     run(

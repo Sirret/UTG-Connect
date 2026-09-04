@@ -33,12 +33,27 @@ import Base from '../layouts/Base.astro';
 
     <input name="location" placeholder="Where (optional)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
 
+    <div>
+      <label class="text-sm font-medium">Photo (optional)</label>
+      <input type="file" id="photo-input" accept="image/*" class="mt-1 block w-full text-sm" />
+      <div id="photo-preview" class="mt-2 hidden">
+        <img class="h-24 w-24 rounded-lg border border-slate-200 object-cover" alt="" />
+      </div>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Attach a document (optional)</label>
+      <input type="file" id="doc-input" accept=".pdf,.doc,.docx" class="mt-1 block w-full text-sm" />
+      <p id="doc-preview" class="mt-1 hidden text-xs font-medium text-slate-600"></p>
+      <p class="mt-1 text-xs text-slate-500">A briefing, a schedule, a form — attached alongside or instead of a photo. Hub posts only.</p>
+    </div>
+
     <button class="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-medium text-white">Post</button>
     <p id="error" class="text-sm text-red-600"></p>
   </form>
 
   <script>
-    import { get, post, auth, invalidate } from '../lib/api.js';
+    import { get, post, auth, upload, invalidate } from '../lib/api.js';
     import { $, esc, qs, toast, withBase } from '../lib/ui.js';
 
     const me = auth.user;
@@ -68,6 +83,37 @@ import Base from '../layouts/Base.astro';
       $('#kind').addEventListener('change', syncDate);
       syncDate();
 
+      let imageUrl = null;
+      let documentUrl = null;
+      let documentName = null;
+
+      $('#photo-input').addEventListener('change', async () => {
+        const file = $('#photo-input').files[0];
+        if (!file) return;
+        try {
+          const res = await upload(file);
+          imageUrl = res.url;
+          $('#photo-preview').classList.remove('hidden');
+          $('#photo-preview img').src = imageUrl;
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+
+      $('#doc-input').addEventListener('change', async () => {
+        const file = $('#doc-input').files[0];
+        if (!file) return;
+        try {
+          const res = await upload(file);
+          documentUrl = res.url;
+          documentName = res.name || file.name;
+          $('#doc-preview').textContent = `📄 ${documentName}`;
+          $('#doc-preview').classList.remove('hidden');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+
       $('#form').addEventListener('submit', async (e) => {
         e.preventDefault();
         $('#error').textContent = '';
@@ -79,6 +125,9 @@ import Base from '../layouts/Base.astro';
             title: f.get('title'),
             body: f.get('body'),
             location: f.get('location'),
+            imageUrl,
+            documentUrl,
+            documentName,
             startsAt: f.get('startsAt') ? new Date(f.get('startsAt')).toISOString() : null,
           });
           invalidate('/posts', '/schools');

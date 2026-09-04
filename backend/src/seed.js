@@ -29,6 +29,13 @@ const at = (days, hour = 10) => {
   d.setUTCHours(hour, 0, 0, 0);
   return d.toISOString().slice(0, 19).replace('T', ' ');
 };
+// For content that should already exist "in the past" — social posts, mainly —
+// so relative-time labels ("3h ago") read naturally on a fresh install.
+const hoursAgo = (h) => {
+  const d = new Date();
+  d.setUTCHours(d.getUTCHours() - h, d.getUTCMinutes(), 0, 0);
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+};
 
 if (get('SELECT COUNT(*) AS n FROM schools').n > 0) {
   console.log('Database already has data. Use `npm run reset` for a clean rebuild.');
@@ -112,6 +119,12 @@ const students = [
 const uid = {};
 for (const s of students) uid[s.username] = addUser(s);
 
+// Everyone but Binta already sells something in this demo — she's the
+// buyer-only account, matching the login page's "Student buyer" label.
+for (const seller of ['fatoujay', 'laminc', 'awahair', 'modoutech', 'isatoubooks', 'ousmanshoots']) {
+  run('UPDATE users SET is_seller = 1 WHERE id = ?', [uid[seller]]);
+}
+
 // --- Council & admin directory (the Info tab) -------------------------------
 
 const directory = {
@@ -184,47 +197,112 @@ for (const [code, kind, title, body, startsAt, location, status] of posts) {
   );
 }
 
+// --- Campus stories: a quick status from each council, not a formal post ---
+
+for (const [code, text, image] of [
+  ['BPA', 'Guest lecture starts in 20 minutes — Lecture Room 2, seats going fast', null],
+  ['EDU', 'TP logbook drop-off extended to Friday 4pm, no more extensions after that', null],
+  ['ITCA', 'Tech Week booths are open now outside the auditorium 🎉', 'campus-students'],
+  ['AGRI', 'Minibus for the field trip leaves the main gate in 10 minutes', null],
+  ['SAS', 'Arts Night sign-up sheet is now up in the SAS Hall lobby', 'campus-entrance'],
+  ['UTGSU', 'Sports Day jerseys ready for pickup at the union office', 'campus-aerial'],
+]) {
+  run(
+    `INSERT INTO school_stories (school_id, author_id, text, image_url, expires_at)
+     VALUES (?, ?, ?, ?, datetime('now', '+1 day'))`,
+    [schoolId[code], councilId[code], text, image ? `/images/${image}.jpg` : null],
+  );
+}
+
+// A couple of students already have events on their personal calendar, so the
+// Calendar page's "My calendar" view isn't empty on a fresh sign-in as them.
+const postIdByTitle = (title) => get('SELECT id FROM posts WHERE title = ?', [title]).id;
+for (const [user, title] of [
+  ['fatoujay', 'ITCA Tech Week — opening ceremony'],
+  ['fatoujay', 'UTG Inter-School Sports Day'],
+  ['modoutech', 'ITCA Tech Week — opening ceremony'],
+]) {
+  run('INSERT INTO post_interests (user_id, post_id) VALUES (?, ?)', [uid[user], postIdByTitle(title)]);
+}
+
+// --- Social (plain student photo posts, separate from the official feed) ---
+
+const socialPost = (author, caption, seed, hoursOld) =>
+  Number(
+    run('INSERT INTO social_posts (author_id, caption, image_url, created_at) VALUES (?, ?, ?, ?)', [
+      uid[author],
+      caption,
+      `https://picsum.photos/seed/${seed}/700/700`,
+      hoursAgo(hoursOld),
+    ]).lastInsertRowid,
+  );
+
+const socialPostId = {
+  sunset: socialPost('fatoujay', 'Sunset over the library today 🌇', 'utg-sunset', 3),
+  benachin: socialPost('laminc', 'Sold out again — thank you ITCA 😂🍲', 'benachin-plate2', 8),
+  braids: socialPost('awahair', "Today's set. Slots for Saturday still open.", 'braids-result', 20),
+  lab: socialPost('modoutech', 'ITCA lab at midnight, project week never sleeps 💻', 'itca-lab-night', 30),
+  shoot: socialPost('ousmanshoots', 'Behind the scenes from a grad shoot this morning', 'gradshoot-bts', 50),
+  books: socialPost('isatoubooks', 'Book table is back outside the library', 'social-book-table', 70),
+  field: socialPost('bintac', 'Field is looking sharp before Sports Day', 'campus-field-social', 96),
+};
+
+const like = (post, ...likers) => {
+  for (const u of likers) run('INSERT OR IGNORE INTO social_likes (user_id, post_id) VALUES (?, ?)', [uid[u], post]);
+};
+like(socialPostId.sunset, 'laminc', 'awahair', 'modoutech');
+like(socialPostId.benachin, 'fatoujay', 'bintac', 'isatoubooks', 'modoutech');
+like(socialPostId.braids, 'bintac', 'isatoubooks');
+like(socialPostId.lab, 'fatoujay', 'ousmanshoots');
+like(socialPostId.shoot, 'awahair', 'laminc', 'bintac');
+like(socialPostId.books, 'modoutech');
+like(socialPostId.field, 'fatoujay', 'laminc', 'awahair', 'modoutech', 'ousmanshoots');
+
+const comment = (post, author, body) =>
+  run('INSERT INTO social_comments (post_id, author_id, body) VALUES (?, ?, ?)', [post, uid[author], body]);
+comment(socialPostId.sunset, 'laminc', 'This view never gets old');
+comment(socialPostId.sunset, 'awahair', 'okay but the sky though 😍');
+comment(socialPostId.benachin, 'isatoubooks', 'saved me today, thank you!');
+comment(socialPostId.benachin, 'bintac', 'order for tomorrow?');
+comment(socialPostId.braids, 'bintac', 'these are so neat');
+comment(socialPostId.lab, 'fatoujay', 'same energy every project week 😩');
+comment(socialPostId.shoot, 'laminc', 'you always get the best angles');
+comment(socialPostId.field, 'modoutech', 'ready for Sunday!');
+
 // --- Marketplace ------------------------------------------------------------
 
+// No `imageUrl` here on purpose: nobody has actually photographed these
+// items, and a random stock photo pretending to be "the charger" or "the
+// braids" would be worse than no photo — the marketplace grid falls back to
+// a category icon (electronics, food, hair…) instead, which is honest about
+// what it is. A real listing made through Sell still requires a real photo.
 const listings = [
-  // seller, section, category, title, description, price, unit, image seed, pickup, deposit
-  ['fatoujay', 'goods', 'electronics', 'Anker 20W fast charger (new)', 'Genuine, boxed. Charges an iPhone to 50% in about half an hour.', 850, 'item', 'charger', 'Main Gate', 0],
-  ['fatoujay', 'goods', 'phones', 'Infinix Hot 30 — used, clean', 'Six months old, battery still strong. Screen has no cracks.', 6500, 'item', 'infinix', 'Library', 0],
-  ['fatoujay', 'goods', 'electronics', 'USB-C to HDMI adapter', 'For presentations. Tested with the ITCA projectors.', 600, 'item', 'adapter', 'Library', 0],
-  ['laminc', 'goods', 'food', 'Weekend benachin — plate', 'Cooked Saturday morning, collect by 1pm. Order the day before.', 120, 'item', 'benachin', 'Hostel A', 0],
-  ['laminc', 'goods', 'food', 'Meat pies (pack of 5)', 'Fresh, made Friday night. Sells out fast.', 150, 'item', 'pies', 'Cafeteria', 0],
-  ['isatoubooks', 'goods', 'books', 'Educational Psychology — 6th ed.', 'Used, some highlighting in chapters 3 and 4. Otherwise clean.', 900, 'item', 'psychbook', 'Library', 0],
-  ['isatoubooks', 'goods', 'books', 'Intro to Statistics (with solutions)', 'The edition SAS actually uses this semester.', 1100, 'item', 'statsbook', 'Library', 0],
-  ['awahair', 'services', 'hair', 'Knotless braids — small', 'Takes about four hours. Bring your own extensions or pay extra.', 700, 'item', 'braids', 'Hostel A', 0],
-  ['awahair', 'services', 'hair', 'Twists and retouch', 'Evenings and weekends only.', 400, 'item', 'twists', 'Hostel A', 0],
-  ['ousmanshoots', 'services', 'photography', 'Graduation photo session', 'One hour, 30 edited photos delivered on WhatsApp.', 2500, 'item', 'gradphoto', 'Faraba Campus', 0],
-  ['ousmanshoots', 'services', 'dj', 'DJ for a small event', 'Speakers and lights included. Campus events only.', 4000, 'item', 'dj', 'Main Gate', 0],
-  ['modoutech', 'services', 'tutoring', 'Programming tutoring (Python, Java)', 'One-on-one or small group. First session free.', 200, 'hour', 'tutoring', 'Library', 0],
-  ['modoutech', 'rent', 'laptops', 'HP ProBook — rent by the day', 'For project week. Charger included. ID required at handoff.', 500, 'day', 'laptop', 'ITCA Common Room', 3000],
-  ['modoutech', 'rent', 'calculators', 'Casio fx-991EX scientific calculator', 'Exam-approved. Rent for the exam period.', 100, 'day', 'calculator', 'Library', 0],
-  ['bintac', 'rent', 'formal-wear', 'Men’s suit — size M', 'For presentations and defence day. Dry-cleaned between rentals.', 1200, 'day', 'suit', 'Hostel B', 2000],
-  ['isatoubooks', 'rent', 'textbooks', 'Research Methods textbook — weekly rent', 'Cheaper than buying if you only need it for one module.', 250, 'week', 'methods', 'Library', 0],
+  // seller, section, category, title, description, price, unit, pickup, deposit
+  ['fatoujay', 'goods', 'electronics', 'Anker 20W fast charger (new)', 'Genuine, boxed. Charges an iPhone to 50% in about half an hour.', 850, 'item', 'Main Gate', 0],
+  ['fatoujay', 'goods', 'phones', 'Infinix Hot 30 — used, clean', 'Six months old, battery still strong. Screen has no cracks.', 6500, 'item', 'Library', 0],
+  ['fatoujay', 'goods', 'electronics', 'USB-C to HDMI adapter', 'For presentations. Tested with the ITCA projectors.', 600, 'item', 'Library', 0],
+  ['laminc', 'goods', 'food', 'Weekend benachin — plate', 'Cooked Saturday morning, collect by 1pm. Order the day before.', 120, 'item', 'Hostel A', 0],
+  ['laminc', 'goods', 'food', 'Meat pies (pack of 5)', 'Fresh, made Friday night. Sells out fast.', 150, 'item', 'Cafeteria', 0],
+  ['isatoubooks', 'goods', 'books', 'Educational Psychology — 6th ed.', 'Used, some highlighting in chapters 3 and 4. Otherwise clean.', 900, 'item', 'Library', 0],
+  ['isatoubooks', 'goods', 'books', 'Intro to Statistics (with solutions)', 'The edition SAS actually uses this semester.', 1100, 'item', 'Library', 0],
+  ['awahair', 'services', 'hair', 'Knotless braids — small', 'Takes about four hours. Bring your own extensions or pay extra.', 700, 'item', 'Hostel A', 0],
+  ['awahair', 'services', 'hair', 'Twists and retouch', 'Evenings and weekends only.', 400, 'item', 'Hostel A', 0],
+  ['ousmanshoots', 'services', 'photography', 'Graduation photo session', 'One hour, 30 edited photos delivered on WhatsApp.', 2500, 'item', 'Faraba Campus', 0],
+  ['ousmanshoots', 'services', 'dj', 'DJ for a small event', 'Speakers and lights included. Campus events only.', 4000, 'item', 'Main Gate', 0],
+  ['modoutech', 'services', 'tutoring', 'Programming tutoring (Python, Java)', 'One-on-one or small group. First session free.', 200, 'hour', 'Library', 0],
+  ['modoutech', 'rent', 'laptops', 'HP ProBook — rent by the day', 'For project week. Charger included. ID required at handoff.', 500, 'day', 'ITCA Common Room', 3000],
+  ['modoutech', 'rent', 'calculators', 'Casio fx-991EX scientific calculator', 'Exam-approved. Rent for the exam period.', 100, 'day', 'Library', 0],
+  ['bintac', 'rent', 'formal-wear', 'Men’s suit — size M', 'For presentations and defence day. Dry-cleaned between rentals.', 1200, 'day', 'Hostel B', 2000],
+  ['isatoubooks', 'rent', 'textbooks', 'Research Methods textbook — weekly rent', 'Cheaper than buying if you only need it for one module.', 250, 'week', 'Library', 0],
 ];
 
 const listingId = {};
-for (const [seller, section, category, title, description, price, unit, seed, pickup, deposit] of listings) {
+for (const [seller, section, category, title, description, price, unit, pickup, deposit] of listings) {
   const info = run(
     `INSERT INTO listings (seller_id, school_id, section, category, title, description, price, price_unit,
                            currency, deposit, image_url, pickup_point, accepts_offers, status)
-     VALUES (?, (SELECT school_id FROM users WHERE id = ?), ?, ?, ?, ?, ?, ?, 'GMD', ?, ?, ?, 1, 'active')`,
-    [
-      uid[seller],
-      uid[seller],
-      section,
-      category,
-      title,
-      description,
-      price,
-      unit,
-      deposit,
-      `https://picsum.photos/seed/${seed}/600/600`,
-      pickup,
-    ],
+     VALUES (?, (SELECT school_id FROM users WHERE id = ?), ?, ?, ?, ?, ?, ?, 'GMD', ?, NULL, ?, 1, 'active')`,
+    [uid[seller], uid[seller], section, category, title, description, price, unit, deposit, pickup],
   );
   listingId[title] = Number(info.lastInsertRowid);
 }
@@ -235,7 +313,7 @@ run(
                          currency, image_url, pickup_point, status, drops_at)
    VALUES (?, (SELECT school_id FROM users WHERE id = ?), 'goods', 'clothing',
            'Limited hoodie drop — ITCA Tech Week', 'Only 20 made. Goes live Friday evening.', 1500, 'item',
-           'GMD', 'https://picsum.photos/seed/hoodie/600/600', 'ITCA Common Room', 'scheduled', ?)`,
+           'GMD', NULL, 'ITCA Common Room', 'scheduled', ?)`,
   [uid.fatoujay, uid.fatoujay, at(2, 18)],
 );
 
@@ -324,6 +402,7 @@ Seeded UTG Connect.
   Schools:   ${schools.map((s) => s.code).join(', ')}
   Posts:     ${get('SELECT COUNT(*) AS n FROM posts').n} (${get("SELECT COUNT(*) AS n FROM posts WHERE status='pending'").n} awaiting approval)
   Listings:  ${get('SELECT COUNT(*) AS n FROM listings').n}
+  Social:    ${get('SELECT COUNT(*) AS n FROM social_posts').n} posts, ${get('SELECT COUNT(*) AS n FROM social_comments').n} comments
   Users:     ${get('SELECT COUNT(*) AS n FROM users').n}
 
 Every account uses the password: ${PW}

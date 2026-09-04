@@ -5,14 +5,35 @@ import { withBase } from '../lib/ui.js';
 interface Props {
   title: string;
   active?: string;
+  /** Full-bleed mode: no header, no app chrome — for the sign-in/sign-up
+   * scene, which is a standalone entry screen rather than part of the app shell. */
+  full?: boolean;
 }
-const { title, active = '' } = Astro.props;
+const { title, active = '', full = false } = Astro.props;
+
+// Outline icons for the mobile tab bar (below `sm`, the top nav is text-only
+// and doesn't fit four labels next to the crest on a phone-width screen).
+const NAV_ICONS = {
+  hub: '<path d="M4 11 12 4l8 7M6 10v9h5v-5h2v5h5v-9"/>',
+  market: '<path d="M4 9h16l-1.2 10.5A2 2 0 0 1 16.8 21H7.2a2 2 0 0 1-2-1.5L4 9Z"/><path d="M8 9V7a4 4 0 0 1 8 0v2"/>',
+  calendar: '<rect x="4" y="5.5" width="16" height="15" rx="2.3"/><path d="M4 9.7h16M8 3.5v4M16 3.5v4"/>',
+  social: '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.6" fill="currentColor" stroke="none"/><path d="M4 16.5l4.5-4 3 2.7 3.2-3.7L20 16"/>',
+  me: '<circle cx="12" cy="8.2" r="3.4"/><path d="M4.8 20c1-3.6 4-5.6 7.2-5.6s6.2 2 7.2 5.6"/>',
+};
 
 const nav = [
-  { href: withBase('/'), label: 'Hub', key: 'hub' },
-  { href: withBase('/market'), label: 'Market', key: 'market' },
-  { href: withBase('/me'), label: 'You', key: 'me' },
+  { href: withBase('/'), label: 'Hub', key: 'hub', icon: NAV_ICONS.hub },
+  { href: withBase('/market'), label: 'Market', key: 'market', icon: NAV_ICONS.market },
+  { href: withBase('/calendar'), label: 'Calendar', key: 'calendar', icon: NAV_ICONS.calendar },
+  { href: withBase('/social'), label: 'Social', key: 'social', icon: NAV_ICONS.social },
+  { href: withBase('/me'), label: 'You', key: 'me', icon: NAV_ICONS.me },
 ];
+
+// The roofline is generated rather than hand-drawn: a short zigzag repeated
+// enough times to look continuous once the SVG is stretched to full width
+// with preserveAspectRatio="none" (same trick the reference mock uses).
+const ROOF_TEETH = 20;
+const roofPath = Array.from({ length: ROOF_TEETH + 1 }, (_, i) => `${i * 10} ${i % 2 === 0 ? 7 : 1}`).join(' L ');
 ---
 
 <!doctype html>
@@ -21,66 +42,173 @@ const nav = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="UTG Connect — one place for school events, deadlines and the student marketplace." />
-    <meta name="theme-color" content="#0f766e" />
+    <meta name="theme-color" content="#232B7E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+      rel="stylesheet"
+    />
     <link rel="manifest" href={withBase('/manifest.webmanifest')} />
     <title>{title} · UTG Connect</title>
   </head>
-  <body class="min-h-dvh pb-20">
-    <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-        <a href={withBase('/')} class="font-semibold tracking-tight text-teal-700">UTG&nbsp;Connect</a>
-        <nav class="ml-auto flex items-center gap-1 text-sm">
-          {
-            nav.map((item) => (
-              <a
-                href={item.href}
-                class:list={[
-                  'rounded-md px-3 py-1.5',
-                  active === item.key ? 'bg-teal-50 font-medium text-teal-700' : 'text-slate-600 hover:bg-slate-100',
-                ]}
-              >
-                {item.label}
-              </a>
-            ))
-          }
-          <span id="nav-auth" class="ml-1"></span>
-        </nav>
-      </div>
-    </header>
+  <body class:list={[full ? '' : 'pb-20 sm:pb-6', 'min-h-dvh']}>
+    {
+      !full && (
+        <header class="sticky top-0 z-40 bg-white/95 backdrop-blur">
+          <div class="mx-auto flex h-[62px] max-w-3xl items-center gap-3 px-4">
+            <a href={withBase('/')} class="flex shrink-0 items-center gap-2.5 font-extrabold tracking-tight text-navy-deep">
+              <svg width="32" height="32" viewBox="0 0 34 34" aria-hidden="true" class="shrink-0">
+                <rect width="34" height="34" rx="9" fill="#232B7E" />
+                <path
+                  d="M5 12 L10 7.5 L10 12 L15 7.5 L15 12 L20 7.5 L20 12 L25 7.5 L25 12 L29 12"
+                  fill="none"
+                  stroke="#EB3F28"
+                  stroke-width="2.6"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+                <text x="17" y="27" text-anchor="middle" font-family="'Plus Jakarta Sans', sans-serif" font-size="12" font-weight="800" fill="#FFFFFF">
+                  UTG
+                </text>
+              </svg>
+              <span class="hidden text-[15px] sm:inline">UTG Connect</span>
+            </a>
+            <!-- Full text nav from `sm` up, where a phone-width tab bar would
+                 waste space better spent on content. -->
+            <nav class="ml-auto hidden h-full items-center text-sm sm:flex">
+              {nav.map((item) => (
+                <a
+                  href={item.href}
+                  class:list={[
+                    'relative flex h-full items-center px-3 font-semibold',
+                    active === item.key ? 'text-navy-deep' : 'text-slate-500 hover:text-navy-deep',
+                  ]}
+                >
+                  {item.label}
+                  {active === item.key && <span class="absolute inset-x-2.5 bottom-0 h-[3px] rounded-t-full bg-navy" />}
+                </a>
+              ))}
+            </nav>
+            <span id="nav-msg" class="ml-auto sm:ml-1.5" />
+            <span id="nav-auth" class="sm:ml-1.5" />
+          </div>
+          <svg class="roofline" viewBox={`0 0 ${ROOF_TEETH * 10} 8`} preserveAspectRatio="none" aria-hidden="true">
+            <path d={`M ${roofPath}`} fill="none" stroke="#EB3F28" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+          </svg>
+        </header>
+      )
+    }
 
-    <main class="mx-auto max-w-3xl px-4 py-5">
+    <main class:list={full ? '' : 'mx-auto max-w-3xl px-4 py-5'}>
       <slot />
     </main>
 
-    <footer class="mx-auto max-w-3xl px-4 pb-6 text-center text-xs text-slate-400">
-      <span id="cache-note"></span>
-      <p class="mt-1">UTG Connect · MVP build for concept validation</p>
-    </footer>
+    {
+      !full && (
+        <footer class="mx-auto hidden max-w-3xl border-t border-slate-200 px-4 pb-6 pt-4 text-center text-xs text-slate-400 sm:block">
+          <span id="cache-note" />
+          <p class="mt-1">UTG Connect · MVP build for concept validation</p>
+        </footer>
+      )
+    }
+
+    {
+      /* Thumb-reachable bottom tab bar — how a phone app actually navigates,
+         instead of a squeezed-down copy of the desktop top nav. */
+      !full && (
+        <nav
+          class="fixed inset-x-0 bottom-0 z-40 flex h-16 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden"
+          aria-label="Primary"
+        >
+          {nav.map((item) => (
+            <a
+              href={item.href}
+              class:list={['flex flex-1 flex-col items-center justify-center gap-0.5', active === item.key ? 'text-navy-deep' : 'text-slate-400']}
+            >
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" set:html={item.icon} />
+              <span class="text-[10px] font-semibold">{item.label}</span>
+            </a>
+          ))}
+        </nav>
+      )
+    }
 
     <script>
-      import { auth, cacheStats } from '../lib/api.js';
-      import { $, withBase } from '../lib/ui.js';
+      import { auth, fetchJson, cacheStats } from '../lib/api.js';
+      import { $, esc, withBase } from '../lib/ui.js';
+
+      // Both targets are absent on full-bleed pages (sign-in/sign-up render
+      // no header or footer at all), so every lookup here is guarded.
+      const msgSlot = $('#nav-msg');
+      if (msgSlot && auth.user) {
+        msgSlot.innerHTML = `
+          <a href="${withBase('/messages')}" class="relative grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-navy-deep" aria-label="Messages">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 3 10.4 13.6M21 3l-6.4 17-3.6-8L3 8.4 21 3Z" />
+            </svg>
+            <span id="msg-badge" class="absolute right-1 top-1 hidden h-2 w-2 rounded-full bg-brand-red"></span>
+          </a>`;
+        fetchJson('/messages/unread-count')
+          .then(({ unread }) => {
+            if (unread > 0) $('#msg-badge').classList.remove('hidden');
+          })
+          .catch(() => {});
+      }
 
       const slot = $('#nav-auth');
-      const user = auth.user;
-      slot.innerHTML = user
-        ? `<button id="signout" class="rounded-md px-3 py-1.5 text-slate-500 hover:bg-slate-100" title="${user.email || user.username}">${user.username}</button>`
-        : `<a href="${withBase('/login')}" class="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white">Sign in</a>`;
-      $('#signout')?.addEventListener('click', () => auth.signOut());
+      if (slot) {
+        const user = auth.user;
+        const initials = (user?.name || user?.username || '')
+          .trim()
+          .split(/\s+/)
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join('')
+          .toUpperCase();
+
+        // A tap here opens your settings, same as the "You" tab — it must
+        // never be the sign-out button. Signing out is a deliberate action
+        // that lives on that page instead, where an accidental tap can't hit it.
+        slot.innerHTML = user
+          ? `<a href="${withBase('/me')}" class="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-xs font-bold text-navy-deep hover:bg-slate-200" title="${esc(user.name || user.username)} — settings">${esc(initials)}</a>`
+          : `<a href="${withBase('/login')}" class="rounded-lg bg-navy px-3 py-1.5 text-sm font-semibold text-white hover:bg-navy-deep">Sign in</a>`;
+      }
 
       // Honest reporting of what the on-device cache is doing, so the caching
       // claim can be checked rather than taken on faith.
       window.addEventListener('load', () => {
         setTimeout(() => {
+          const note = $('#cache-note');
+          if (!note) return;
           const s = cacheStats();
           if (!s.entries) return;
-          $('#cache-note').textContent =
+          note.textContent =
             `Cached on this device: ${s.entries} response${s.entries === 1 ? '' : 's'} (${(s.bytes / 1024).toFixed(1)} KB) · ` +
             `this visit: ${s.hits} served from cache, ${s.misses} downloaded`;
         }, 400);
       });
 
-      if ('serviceWorker' in navigator) {
+      // The service worker exists to make the *deployed* site installable and
+      // usable offline. During `astro dev` it works against that goal: it is
+      // cache-first, so once it has seen a page it keeps serving that exact
+      // copy forever, no matter how many times a file changes underneath it —
+      // which is exactly the "my edits aren't showing up on localhost" bug.
+      // So it only ever registers against a real build. In dev, any worker a
+      // past run left registered gets torn down automatically, so there is
+      // never a stale one left to remember to clear by hand.
+      if (import.meta.env.DEV) {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+        }
+        // Unregistering only stops it intercepting new requests — the
+        // responses it already saved sit in Cache Storage regardless, so
+        // without this a dev tab can still serve a stale copy on the one
+        // request that lands before the unregister above takes effect.
+        if ('caches' in window) {
+          caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+        }
+      } else if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register(withBase('/sw.js')).catch(() => {});
       }
     </script>

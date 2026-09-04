@@ -149,6 +149,28 @@ export const post = (path, body) => fetchJson(path, { method: 'POST', body });
 export const patch = (path, body) => fetchJson(path, { method: 'PATCH', body });
 export const del = (path) => fetchJson(path, { method: 'DELETE' });
 export const apiBase = API;
+// Uploaded files are served from the API's own origin, not under /api — this
+// turns the server's root-relative "/uploads/xyz.jpg" into a full URL that
+// renders correctly no matter which page displays it later.
+export const apiOrigin = API.replace(/\/api\/?$/, '');
+
+/** Uploads a single file (image or, from a council post, a document) and
+ * returns its stored URL. Not built on fetchJson — a file body is
+ * multipart/form-data, not JSON. */
+export async function upload(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(API + '/uploads', { method: 'POST', headers: headers(), body: fd });
+  const text = await res.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = { raw: text };
+  }
+  if (!res.ok) throw new ApiError(res.status, payload);
+  return { ...payload, url: apiOrigin + payload.url };
+}
 
 /** A write invalidates the caches it could have changed. */
 export function invalidate(...prefixes) {

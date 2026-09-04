@@ -6,41 +6,32 @@ import Base from '../layouts/Base.astro';
   <div id="view"></div>
 
   <script>
-    import { fetchJson, apiBase } from '../lib/api.js';
-    import { $, esc, qs, countdown, kindChip, dateLabel, relative, spinner, withBase } from '../lib/ui.js';
+    import { fetchJson, post, auth, apiBase, invalidate } from '../lib/api.js';
+    import { $, esc, qs, dateLabel, spinner, postHeader, postCover, postActions, documentChip, bindPostActions, withBase } from '../lib/ui.js';
 
     const id = qs('id');
+    const user = auth.user;
     $('#view').innerHTML = spinner();
+
+    bindPostActions($('#view'), post, { signedIn: !!user, onToggle: () => invalidate('/posts') });
 
     fetchJson(`/posts/${id}`)
       .then(({ post: p }) => {
         $('#view').innerHTML = `
-        <a href="${withBase(`/schools?code=${esc(p.school.code)}`)}" class="mb-3 inline-block rounded px-2 py-1 text-xs font-bold text-white"
-           style="background:${esc(p.school.color)}">${esc(p.school.code)} — ${esc(p.school.name)}</a>
-
-        <div class="mb-2 flex flex-wrap items-center gap-2">
-          ${kindChip(p.kind)} ${countdown(p.daysLeft, p.countdown)}
-          <span class="text-xs text-slate-400">posted ${esc(relative(p.createdAt))}</span>
-        </div>
-
-        <h1 class="text-xl font-semibold leading-snug">${esc(p.title)}</h1>
-        ${p.body ? `<p class="mt-3 whitespace-pre-line text-slate-700">${esc(p.body)}</p>` : ''}
-
-        <dl class="mt-4 space-y-1 text-sm text-slate-600">
-          ${p.startsAt ? `<div><dt class="inline font-medium">When:</dt> <dd class="inline">${esc(dateLabel(p.startsAt))}</dd></div>` : ''}
-          ${p.location ? `<div><dt class="inline font-medium">Where:</dt> <dd class="inline">${esc(p.location)}</dd></div>` : ''}
-          <div><dt class="inline font-medium">Posted by:</dt> <dd class="inline">${esc(p.author.name)}</dd></div>
-        </dl>
-
-        ${
-          p.startsAt
-            ? `<a href="${apiBase}/posts/${p.id}/calendar.ics"
-                  class="mt-4 block rounded-lg bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white">
-                 Add to my phone calendar
-               </a>
-               <p class="mt-1 text-center text-xs text-slate-400">Downloads a calendar file your phone opens directly — it becomes part of your real schedule, not just another feed item.</p>`
-            : ''
-        }`;
+        <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div class="flex items-center px-3.5 pb-2.5 pt-3.5">${postHeader(p)}</div>
+          <div class="aspect-[4/3] bg-slate-100">${postCover(p)}</div>
+          <div class="p-3.5">
+            ${postActions(p, p.startsAt ? `${apiBase}/posts/${p.id}/calendar.ics` : null)}
+            <h1 class="mt-2.5 text-lg font-extrabold leading-snug text-slate-900">${esc(p.title)}</h1>
+            ${p.body ? `<p class="mt-1.5 whitespace-pre-line text-sm text-slate-700">${esc(p.body)}</p>` : ''}
+            ${documentChip(p)}
+            <dl class="mt-3 space-y-1 text-xs text-slate-500">
+              ${p.startsAt ? `<div><dt class="inline font-medium">When:</dt> <dd class="inline">${esc(dateLabel(p.startsAt))}</dd></div>` : ''}
+              ${p.location ? `<div><dt class="inline font-medium">Where:</dt> <dd class="inline">${esc(p.location)}</dd></div>` : ''}
+            </dl>
+          </div>
+        </div>`;
       })
       .catch((e) => {
         $('#view').innerHTML = `<p class="py-8 text-center text-sm text-red-600">${esc(e.message)}</p>`;

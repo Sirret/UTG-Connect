@@ -53,6 +53,17 @@ if not exist "frontend\.env" (
   echo   Created frontend\.env
 )
 
+REM ---- Cache ------------------------------------------------------------------
+REM `npm run dev` never registers the service worker at all (Base.astro skips
+REM it in dev — a cache-first worker only fights Vite's own hot-reload), so
+REM this is not needed for the usual localhost:4321 workflow. It only matters
+REM if you later run `npm run preview` to sanity-check the real production
+REM build, where the worker *is* active by design — this stamps it with a
+REM fresh cache key first, so that check never serves a stale build by accident.
+pushd frontend
+call node scripts\bump-sw-cache.mjs
+popd
+
 REM ---- Run -------------------------------------------------------------------
 echo.
 echo   Starting both servers, each in its own window...

@@ -208,6 +208,11 @@ listingRoutes.post(
   '/',
   requireAuth,
   wrap((req, res) => {
+    // Admin runs the platform, not a storefront; council can sell without a
+    // separate opt-in (an official account is already vouched for); a plain
+    // student has to flip the is_seller switch first.
+    const canSell = req.user.role === 'council' || (req.user.role === 'student' && req.user.is_seller);
+    if (!canSell) throw forbidden('Turn on selling first — visit "List something" to become a seller');
     need(req.body, 'section', 'category', 'title', 'price');
     const section = oneOf(req.body.section, SECTIONS, 'section');
     const category = oneOf(req.body.category, CATEGORIES[section], `category for ${section}`);

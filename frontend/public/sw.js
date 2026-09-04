@@ -3,7 +3,7 @@
  * usable when the connection drops — API responses are cached separately in
  * localStorage by lib/api.js, which is where the real data-saving happens.
  */
-const SHELL = 'utgc-shell-v1';
+const SHELL = 'utgc-shell-20260904-160931';
 
 // Derived at runtime from the registration itself, not hardcoded — this file is
 // a plain static asset (unlike the pages, it isn't run through the bundler), so

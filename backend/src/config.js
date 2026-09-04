@@ -33,4 +33,5 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   dbPath: process.env.DB_PATH || path.join(ROOT, 'data', 'utg.db'),
+  uploadsDir: process.env.UPLOADS_DIR || path.join(ROOT, 'data', 'uploads'),
 };

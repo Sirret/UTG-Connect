@@ -7,7 +7,7 @@ import Base from '../layouts/Base.astro';
 
   <script>
     import { fetchJson, post, auth } from '../lib/api.js';
-    import { $, esc, money, qs, spinner, toast, empty, withBase } from '../lib/ui.js';
+    import { $, esc, money, qs, spinner, toast, empty, listingCover, withBase } from '../lib/ui.js';
 
     const username = qs('u');
     const me = auth.user;
@@ -26,7 +26,10 @@ import Base from '../layouts/Base.astro';
             </div>
             ${
               me && me.username !== s.username
-                ? `<button id="follow" class="rounded-lg px-3 py-1.5 text-sm font-medium ${s.following ? 'border border-slate-300' : 'bg-teal-700 text-white'}">${s.following ? 'Following' : 'Follow'}</button>`
+                ? `<div class="flex shrink-0 flex-col gap-1.5">
+                     <button id="follow" class="rounded-lg px-3 py-1.5 text-sm font-medium ${s.following ? 'border border-slate-300' : 'bg-teal-700 text-white'}">${s.following ? 'Following' : 'Follow'}</button>
+                     <a href="${withBase(`/messages?with=${s.id}`)}" class="rounded-lg border border-navy px-3 py-1.5 text-center text-sm font-medium text-navy">Message</a>
+                   </div>`
                 : ''
             }
           </div>
@@ -59,7 +62,7 @@ import Base from '../layouts/Base.astro';
                   .map(
                     (l) => `
             <a href="${withBase(`/listing?id=${l.id}`)}" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <img src="${esc(l.imageUrl)}" alt="${esc(l.title)}" loading="lazy" width="300" height="300" class="aspect-square w-full object-cover" />
+              <div class="aspect-square w-full bg-slate-100">${listingCover(l)}</div>
               <div class="p-2">
                 <p class="line-clamp-2 text-sm leading-snug">${esc(l.title)}</p>
                 <p class="mt-1 text-sm font-semibold text-teal-700">${esc(money(l.price, l.currency, l.priceUnit))}</p>

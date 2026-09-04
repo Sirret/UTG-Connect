@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- 'student' | 'council' | 'admin'. A council account belongs to the council,
   -- not to whoever currently holds office, so it survives leadership changes.
   role          TEXT NOT NULL DEFAULT 'student',
+  -- A student stays a plain buyer until they deliberately opt in to selling —
+  -- listing something is a distinct step, not something every account can do.
+  is_seller     INTEGER NOT NULL DEFAULT 0,
   school_id     INTEGER REFERENCES schools(id),
   bio           TEXT NOT NULL DEFAULT '',
   avatar_url    TEXT,
@@ -56,6 +59,10 @@ CREATE TABLE IF NOT EXISTS posts (
   ends_at     TEXT,
   location    TEXT,
   image_url   TEXT,
+  -- A PDF/doc a council attaches — a briefing, a schedule, a form. Hub posts
+  -- only; Market and Social stay photo-only by design.
+  document_url  TEXT,
+  document_name TEXT,
   status      TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'published' | 'rejected'
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -121,6 +128,14 @@ CREATE TABLE IF NOT EXISTS follows (
   PRIMARY KEY (follower_id, seller_id)
 );
 
+-- "I'm going" / "add to my calendar" — a student's personal shortlist of posts.
+CREATE TABLE IF NOT EXISTS post_interests (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, post_id)
+);
+
 CREATE TABLE IF NOT EXISTS ratings (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   seller_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -139,6 +154,39 @@ CREATE TABLE IF NOT EXISTS stories (
   listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   expires_at TEXT NOT NULL
+);
+
+-- 24-hour school/council status updates on the Hub — a quick "campus WiFi is
+-- down" note, not a formal post. Deliberately no likes/comments: a status,
+-- not content. Picture-or-text only, never a document.
+CREATE TABLE IF NOT EXISTS school_stories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  school_id  INTEGER NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text       TEXT NOT NULL DEFAULT '',
+  image_url  TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
+);
+
+-- Direct messages — one thread per pair of users, reused for "message the
+-- council from a story", "message a seller from a listing", and anything
+-- else that needs a private note between two accounts.
+CREATE TABLE IF NOT EXISTS conversations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_a     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_b     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_a, user_b)
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  read            INTEGER NOT NULL DEFAULT 0
 );
 
 -- Rent & Borrow agreements: the extra safeguards live here.
@@ -185,6 +233,32 @@ CREATE TABLE IF NOT EXISTS reports (
   reviewed_at   TEXT
 );
 
+-- The Social tab: plain student posts (a photo + a caption), separate from
+-- the official school/council feed above.
+CREATE TABLE IF NOT EXISTS social_posts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  caption    TEXT NOT NULL DEFAULT '',
+  image_url  TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS social_likes (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id    INTEGER NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, post_id)
+);
+
+CREATE TABLE IF NOT EXISTS social_comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id    INTEGER NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+  author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -201,7 +275,23 @@ CREATE INDEX IF NOT EXISTS idx_listings_sect  ON listings(section, status);
 CREATE INDEX IF NOT EXISTS idx_listings_upd   ON listings(updated_at);
 CREATE INDEX IF NOT EXISTS idx_offers_listing ON offers(listing_id);
 CREATE INDEX IF NOT EXISTS idx_notif_user     ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_interests_user ON post_interests(user_id);
+CREATE INDEX IF NOT EXISTS idx_social_posts_created ON social_posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_social_comments_post ON social_comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_school_stories_school ON school_stories(school_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 `);
+
+// Cheap migration for databases created before a column existed — SQLite's
+// ALTER TABLE ADD COLUMN is instant, so this just runs harmlessly every boot.
+const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+if (!hasColumn('users', 'is_seller')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_seller INTEGER NOT NULL DEFAULT 0');
+}
+if (!hasColumn('posts', 'document_url')) {
+  db.exec('ALTER TABLE posts ADD COLUMN document_url TEXT');
+  db.exec('ALTER TABLE posts ADD COLUMN document_name TEXT');
+}
 
 // node:sqlite hands back null-prototype rows; copy them so JSON.stringify and
 // spread behave the way the rest of the code expects.

@@ -33,8 +33,9 @@ schoolRoutes.get(
 );
 
 /**
- * The "Today" activity strip: one row per school with a flag for new posts in
- * the last 24h. Static payload, tiny on purpose.
+ * The "Today" strip: one row per school with a flag for new posts in the last
+ * 24h, plus just enough about its most recent post (kind, photo) to paint a
+ * story-style preview tile without a second round trip.
  */
 schoolRoutes.get(
   '/activity',
@@ -44,16 +45,32 @@ schoolRoutes.get(
              (SELECT COUNT(*) FROM posts p
                WHERE p.school_id = s.id AND p.status = 'published' AND p.deleted = 0
                  AND p.created_at >= datetime('now', '-1 day')) AS new_posts,
-             (SELECT MAX(created_at) FROM posts p
-               WHERE p.school_id = s.id AND p.status = 'published' AND p.deleted = 0) AS last_post_at
+             (SELECT p.id FROM posts p
+               WHERE p.school_id = s.id AND p.status = 'published' AND p.deleted = 0
+               ORDER BY p.created_at DESC LIMIT 1) AS latest_post_id
       FROM schools s WHERE s.active = 1
       ORDER BY new_posts DESC, s.is_campus_wide DESC, s.name
     `);
+
+    const ids = rows.map((r) => r.latest_post_id).filter(Boolean);
+    const previews = ids.length
+      ? new Map(
+          all(`SELECT id, kind, image_url FROM posts WHERE id IN (${ids.map(() => '?').join(',')})`, ids).map((p) => [p.id, p]),
+        )
+      : new Map();
+
     sendCached(
       req,
       res,
       {
-        schools: rows.map((r) => ({ ...shape(r), newPosts: r.new_posts, hasNew: r.new_posts > 0, lastPostAt: r.last_post_at })),
+        schools: rows.map((r) => ({
+          ...shape(r),
+          newPosts: r.new_posts,
+          hasNew: r.new_posts > 0,
+          latestPost: r.latest_post_id
+            ? { id: r.latest_post_id, kind: previews.get(r.latest_post_id).kind, imageUrl: previews.get(r.latest_post_id).image_url }
+            : null,
+        })),
       },
       60,
     );

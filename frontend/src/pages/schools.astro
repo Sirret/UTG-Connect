@@ -13,12 +13,15 @@ import Base from '../layouts/Base.astro';
   <div id="panel"></div>
 
   <script>
-    import { get, auth, apiBase } from '../lib/api.js';
-    import { $, esc, qs, countdown, kindChip, dateLabel, spinner, empty, withBase } from '../lib/ui.js';
+    import { get, post, auth, apiBase, invalidate } from '../lib/api.js';
+    import { $, esc, qs, spinner, empty, socialCard, bindPostActions, withBase } from '../lib/ui.js';
 
     const code = (qs('code') || auth.user?.schoolCode || 'UTGSU').toUpperCase();
+    const user = auth.user;
     let tab = qs('tab') || 'feed';
     let school = null;
+
+    bindPostActions($('#panel'), post, { signedIn: !!user, onToggle: () => invalidate('/posts') });
 
     async function renderHeader() {
       const { data } = await get(`/schools/${code}`);
@@ -40,29 +43,17 @@ import Base from '../layouts/Base.astro';
       return data;
     }
 
-    function postCard(p) {
-      return `
-      <article class="rounded-xl border border-slate-200 bg-white p-4">
-        <div class="mb-1 flex flex-wrap items-center gap-2">
-          ${kindChip(p.kind)} ${countdown(p.daysLeft, p.countdown)}
-        </div>
-        <h2 class="font-medium"><a href="${withBase(`/post?id=${p.id}`)}" class="hover:underline">${esc(p.title)}</a></h2>
-        ${p.body ? `<p class="mt-1 text-sm text-slate-600">${esc(p.body)}</p>` : ''}
-        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-          ${p.startsAt ? `<span>${esc(dateLabel(p.startsAt))}</span>` : ''}
-          ${p.location ? `<span>· ${esc(p.location)}</span>` : ''}
-          ${p.startsAt ? `<a class="ml-auto rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700" href="${apiBase}/posts/${p.id}/calendar.ics">Add to calendar</a>` : ''}
-        </div>
-      </article>`;
-    }
-
     async function renderFeed() {
       $('#panel').innerHTML = spinner();
       const { data } = await get(`/posts?school=${code}&limit=60`);
       const canPost = auth.user && (auth.user.role === 'admin' || (auth.user.role === 'council' && auth.user.schoolCode === code));
       $('#panel').innerHTML = `
         ${canPost ? `<a href="${withBase(`/compose?school=${code}`)}" class="mb-3 block rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">Post to ${esc(code)}</a>` : ''}
-        <div class="space-y-3">${data.posts.length ? data.posts.map(postCard).join('') : empty('This council has not posted yet.')}</div>`;
+        <div class="space-y-4">${
+          data.posts.length
+            ? data.posts.map((p) => socialCard(p, { icsHref: p.startsAt ? `${apiBase}/posts/${p.id}/calendar.ics` : null })).join('')
+            : empty('This council has not posted yet.')
+        }</div>`;
     }
 
     /** The Info tab: who to contact, for what, and how. */

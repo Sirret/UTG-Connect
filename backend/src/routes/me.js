@@ -2,9 +2,42 @@ import { Router } from 'express';
 import { all, get, run } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { shapeListing } from './listings.js';
+import { shapePost } from './posts.js';
 import { toIso, wrap } from '../util.js';
 
 export const meRoutes = Router();
+
+/** The one-way switch from plain student (buyer) to student-and-seller.
+ * Selling is a deliberate opt-in, not something every account can already do. */
+meRoutes.post(
+  '/become-seller',
+  requireAuth,
+  wrap((req, res) => {
+    run('UPDATE users SET is_seller = 1 WHERE id = ?', [req.user.id]);
+    res.json({ ok: true, isSeller: true });
+  }),
+);
+
+/** Everything on the signed-in student's personal calendar — every post they
+ * hit "Add to calendar" on, soonest first. */
+meRoutes.get(
+  '/calendar',
+  requireAuth,
+  wrap((req, res) => {
+    const rows = all(
+      `SELECT p.*, s.code AS school_code, s.name AS school_name, s.color AS school_color,
+              u.name AS author_name
+       FROM post_interests x
+       JOIN posts p   ON p.id = x.post_id
+       JOIN schools s ON s.id = p.school_id
+       JOIN users u   ON u.id = p.author_id
+       WHERE x.user_id = ? AND p.deleted = 0
+       ORDER BY p.starts_at ASC`,
+      [req.user.id],
+    );
+    res.json({ posts: rows.map((p) => shapePost(p, { interested: true })) });
+  }),
+);
 
 meRoutes.get(
   '/saves',

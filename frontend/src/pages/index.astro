@@ -3,11 +3,36 @@ import Base from '../layouts/Base.astro';
 ---
 
 <Base title="Hub" active="hub">
-  <!-- "Today" activity strip: static school icons, coloured ring when there is
-       something new. Deliberately text + colour only, no images to download. -->
+  <!-- "Today" story rail: a 24h status from each school council — a quick
+       note, not a formal post. Tap to open it full-screen, WhatsApp-status
+       style, auto-advancing to the next one. -->
   <section class="-mx-4 mb-5 overflow-x-auto px-4">
-    <div id="activity" class="flex gap-3 pb-1"></div>
+    <div id="activity" class="flex gap-2.5 pb-1"></div>
   </section>
+
+  <form id="story-compose" class="mb-5 hidden space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5">
+    <p class="text-sm font-semibold text-slate-700">Post a status for your school</p>
+    <input id="story-text" maxlength="140" placeholder="A quick note — gone in 24 hours" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    <input type="file" id="story-photo-input" accept="image/*" class="block w-full text-sm" />
+    <div id="story-photo-preview" class="hidden">
+      <img class="h-20 w-20 rounded-lg border border-slate-200 object-cover" alt="" />
+    </div>
+    <div class="flex justify-end gap-2">
+      <button type="button" id="story-compose-cancel" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-500">Cancel</button>
+      <button class="rounded-lg bg-navy px-4 py-1.5 text-sm font-semibold text-white">Post status</button>
+    </div>
+    <p id="story-compose-error" class="text-xs text-brand-red-deep"></p>
+  </form>
+
+  <div id="story-viewer" class="fixed inset-0 z-50 hidden bg-black p-3 sm:p-6" role="dialog" aria-modal="true">
+    <div class="mx-auto flex h-full max-w-md flex-col">
+      <div id="story-progress" class="mb-2 flex gap-1"></div>
+      <button id="story-close" class="absolute right-5 top-5 z-20 grid h-9 w-9 place-items-center rounded-full bg-white/15 text-lg text-white sm:right-8 sm:top-8" aria-label="Close">✕</button>
+      <div id="story-body" class="relative flex min-h-0 flex-1 flex-col"></div>
+    </div>
+  </div>
+
+  <div id="greet" class="mb-5"></div>
 
   <div id="digest" class="mb-5"></div>
 
@@ -26,35 +51,213 @@ import Base from '../layouts/Base.astro';
   </div>
 
   <p id="sort-note" class="mb-3 text-xs text-slate-500"></p>
-  <div id="feed" class="space-y-3"></div>
+  <div id="feed" class="space-y-4"></div>
 
   <script>
-    import { get, auth, apiBase } from '../lib/api.js';
-    import { $, esc, countdown, kindChip, dateLabel, relative, spinner, empty, withBase } from '../lib/ui.js';
+    import { get, post, auth, apiBase, upload, invalidate } from '../lib/api.js';
+    import { $, $$, esc, spinner, empty, socialCard, bindPostActions, relative, toast, withBase } from '../lib/ui.js';
 
     const user = auth.user;
+    // Signing in is the front door — an anonymous visit lands on /login
+    // rather than a public read-only Hub.
+    if (!user) location.href = withBase('/login');
+
     // A student's home school is their default view — that is the point of
     // picking one at sign-up.
     let scope = user?.schoolCode ? 'mine' : 'all';
     let kind = '';
 
+    bindPostActions($('#feed'), post, { signedIn: !!user, onToggle: () => invalidate('/posts') });
+
+    // --- Campus stories: a 24h status, not a post — no likes, just a
+    // message straight to the council's inbox, and it auto-advances. ---
+    const STORY_MS = 4000;
+    let stories = [];
+    let storyTimer = null;
+
+    function storyCover(s) {
+      if (s.imageUrl) return `<img src="${esc(s.imageUrl)}" alt="" class="h-full w-full object-cover" />`;
+      return `<div class="flex h-full w-full items-center justify-center p-8 text-center" style="background:${esc(s.school.color)}">
+        <p class="text-xl font-bold leading-snug text-white">${esc(s.text)}</p>
+      </div>`;
+    }
+
     async function renderActivity() {
-      const { data } = await get('/schools/activity');
-      $('#activity').innerHTML = data.schools
-        .map(
-          (s) => `
-        <a href="${withBase(`/schools?code=${esc(s.code)}`)}" class="flex w-16 shrink-0 flex-col items-center gap-1">
-          <span class="grid h-14 w-14 place-items-center rounded-full text-xs font-bold text-white ${
-            s.hasNew ? 'ring-2 ring-offset-2' : 'opacity-70'
-          }" style="background:${esc(s.color)};${s.hasNew ? `--tw-ring-color:${esc(s.color)}` : ''}">${esc(s.code)}</span>
-          <span class="text-[11px] leading-tight text-slate-600">${s.hasNew ? `${s.newPosts} new` : 'quiet'}</span>
-        </a>`,
-        )
+      const { data } = await get('/school-stories');
+      stories = data.stories;
+      const canPost = user && (user.role === 'council' || user.role === 'admin');
+      const addTile = canPost
+        ? `<button id="add-status" type="button" class="flex h-32 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 hover:border-navy hover:text-navy">
+             <span class="text-lg font-bold leading-none">+</span>
+             <span class="text-[10px] font-semibold">Add status</span>
+           </button>`
+        : '';
+      $('#activity').innerHTML =
+        addTile +
+        stories
+          .map(
+            (s, i) => `
+        <button data-index="${i}" class="story relative h-32 w-24 shrink-0 overflow-hidden rounded-xl text-left">
+          <div class="absolute inset-0 ${s.imageUrl ? 'scale-110 blur-md' : ''}" style="${s.imageUrl ? '' : `background:${esc(s.school.color)}`}">
+            ${s.imageUrl ? `<img src="${esc(s.imageUrl)}" alt="" class="h-full w-full object-cover" />` : ''}
+          </div>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
+          <div class="absolute inset-x-1.5 bottom-1.5">
+            <span class="block truncate text-[10px] font-bold text-white">${esc(s.school.code)}</span>
+            <span class="block truncate text-[9px] text-white/75">${esc(relative(s.createdAt))}</span>
+          </div>
+        </button>`,
+          )
+          .join('');
+      $$('.story', $('#activity')).forEach((b) => b.addEventListener('click', () => openStory(Number(b.dataset.index))));
+      $('#add-status')?.addEventListener('click', () => $('#story-compose').classList.remove('hidden'));
+    }
+
+    function renderProgress() {
+      $('#story-progress').innerHTML = stories
+        .map((_, i) => `<div class="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30"><div class="story-bar h-full bg-white" data-i="${i}"></div></div>`)
         .join('');
+    }
+
+    function openStory(index) {
+      clearTimeout(storyTimer);
+      if (index < 0) index = 0;
+      if (index >= stories.length) {
+        closeStory();
+        return;
+      }
+      const s = stories[index];
+      const viewer = $('#story-viewer');
+      viewer.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+
+      if (!$('#story-progress').children.length) renderProgress();
+      $$('.story-bar').forEach((bar, i) => {
+        bar.style.transition = 'none';
+        bar.style.width = i < index ? '100%' : '0%';
+      });
+
+      $('#story-body').innerHTML = `
+        <div class="flex items-center gap-2.5 px-1 pb-3 text-white">
+          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white" style="background:${esc(s.school.color)}">${esc(s.school.code.slice(0, 2))}</span>
+          <div class="min-w-0">
+            <span class="block truncate text-sm font-bold">${esc(s.school.name)}</span>
+            <span class="block text-xs text-white/70">${esc(relative(s.createdAt))}</span>
+          </div>
+        </div>
+        <div class="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-slate-900">
+          ${storyCover(s)}
+          <div class="absolute inset-0 flex">
+            <button class="story-prev flex-1" aria-label="Previous status"></button>
+            <button class="story-next flex-1" aria-label="Next status"></button>
+          </div>
+        </div>
+        ${s.imageUrl && s.text ? `<p class="mt-2 text-center text-sm text-white">${esc(s.text)}</p>` : ''}
+        <form class="message-form mt-3 flex gap-2" data-recipient="${s.author.id}">
+          <input name="body" placeholder="Message ${esc(s.school.code)}…" class="min-w-0 flex-1 rounded-full border border-white/30 bg-white/10 px-3.5 py-2 text-sm text-white placeholder-white/50" />
+          <button class="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900">Send</button>
+        </form>`;
+
+      const bar = document.querySelector(`.story-bar[data-i="${index}"]`);
+      requestAnimationFrame(() => {
+        bar.style.transition = `width ${STORY_MS}ms linear`;
+        bar.style.width = '100%';
+      });
+      storyTimer = setTimeout(() => openStory(index + 1), STORY_MS);
+
+      $('.story-prev').addEventListener('click', () => openStory(index - 1));
+      $('.story-next').addEventListener('click', () => openStory(index + 1));
+      // Typing a message pauses the auto-advance so it can't yank the story
+      // away mid-sentence; sending or moving on resumes it.
+      $('.message-form input').addEventListener('focus', () => clearTimeout(storyTimer));
+      $('.message-form input').addEventListener('blur', () => {
+        clearTimeout(storyTimer);
+        storyTimer = setTimeout(() => openStory(index + 1), STORY_MS);
+      });
+      $('.message-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!user) {
+          toast('Sign in to send a message');
+          return;
+        }
+        const input = e.target.body;
+        const body = input.value.trim();
+        if (!body) return;
+        await post(`/messages/${e.target.dataset.recipient}`, { body });
+        input.value = '';
+        toast('Sent');
+        storyTimer = setTimeout(() => openStory(index + 1), STORY_MS);
+      });
+    }
+    function closeStory() {
+      clearTimeout(storyTimer);
+      $('#story-viewer').classList.add('hidden');
+      $('#story-progress').innerHTML = '';
+      document.body.style.overflow = '';
+    }
+    $('#story-close').addEventListener('click', closeStory);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeStory();
+    });
+
+    $('#story-compose-cancel').addEventListener('click', () => $('#story-compose').classList.add('hidden'));
+    let storyImageUrl = null;
+    $('#story-photo-input').addEventListener('change', async () => {
+      const file = $('#story-photo-input').files[0];
+      if (!file) return;
+      try {
+        const res = await upload(file);
+        storyImageUrl = res.url;
+        $('#story-photo-preview').classList.remove('hidden');
+        $('#story-photo-preview img').src = storyImageUrl;
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+    $('#story-compose').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('#story-compose-error').textContent = '';
+      if (!$('#story-text').value.trim() && !storyImageUrl) {
+        $('#story-compose-error').textContent = 'Add a photo or a line of text.';
+        return;
+      }
+      try {
+        await post('/school-stories', { schoolCode: user.schoolCode, text: $('#story-text').value.trim(), imageUrl: storyImageUrl });
+        e.target.reset();
+        storyImageUrl = null;
+        $('#story-photo-preview').classList.add('hidden');
+        $('#story-compose').classList.add('hidden');
+        toast('Status posted — visible for 24 hours');
+        renderActivity();
+      } catch (err) {
+        $('#story-compose-error').textContent = err.message;
+      }
+    });
+
+    function greet() {
+      const h = new Date().getHours();
+      const name = user?.name?.split(' ')[0] || user?.username;
+      const lines = !name
+        ? ['Happening around UTG']
+        : h < 12
+          ? [`Nanga def, ${esc(name)}`, `Good morning, ${esc(name)}`]
+          : h < 17
+            ? [`Good afternoon, ${esc(name)}`, `Hera be, ${esc(name)}`]
+            : [`Good evening, ${esc(name)}`, `Naka ngon si, ${esc(name)}`];
+      $('#greet').innerHTML = `
+        <h1 class="text-[21px] font-extrabold tracking-tight text-navy-deep">${lines[0]}</h1>
+        <svg width="86" height="9" viewBox="0 0 86 9" class="my-2" aria-hidden="true">
+          <path d="M1 8 L8 1.5 L15 8 L22 1.5 L29 8 L36 1.5 L43 8 L50 1.5 L57 8 L64 1.5 L71 8 L78 1.5 L85 8"
+                fill="none" stroke="#EB3F28" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
+        </svg>
+        <p id="greet-sub" class="text-[13.5px] text-slate-600"></p>`;
     }
 
     async function renderDigest() {
       const { data } = await get('/posts/digest');
+      $('#greet-sub').textContent = data.count
+        ? `${data.count} thing${data.count === 1 ? '' : 's'} happening this week.`
+        : 'Nothing urgent on your school page right now.';
       if (!data.count) return;
       const top = data.items.slice(0, 3);
       $('#digest').innerHTML = `
@@ -71,31 +274,6 @@ import Base from '../layouts/Base.astro';
         </details>`;
     }
 
-    function card(p) {
-      return `
-      <article class="rounded-xl border border-slate-200 bg-white p-4">
-        <div class="mb-1 flex flex-wrap items-center gap-2">
-          <a href="${withBase(`/schools?code=${esc(p.school.code)}`)}" class="rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
-             style="background:${esc(p.school.color)}">${esc(p.school.code)}</a>
-          ${kindChip(p.kind)}
-          ${countdown(p.daysLeft, p.countdown)}
-          <span class="ml-auto text-xs text-slate-400">${esc(relative(p.createdAt))}</span>
-        </div>
-        <h2 class="font-medium leading-snug"><a href="${withBase(`/post?id=${p.id}`)}" class="hover:underline">${esc(p.title)}</a></h2>
-        ${p.body ? `<p class="mt-1 line-clamp-3 text-sm text-slate-600">${esc(p.body)}</p>` : ''}
-        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-          ${p.startsAt ? `<span>${esc(dateLabel(p.startsAt))}</span>` : ''}
-          ${p.location ? `<span>· ${esc(p.location)}</span>` : ''}
-          ${
-            p.startsAt
-              ? `<a class="ml-auto rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50"
-                    href="${apiBase}/posts/${p.id}/calendar.ics">Add to calendar</a>`
-              : ''
-          }
-        </div>
-      </article>`;
-    }
-
     async function renderFeed() {
       $('#feed').innerHTML = spinner();
       const school = scope === 'mine' && user?.schoolCode ? user.schoolCode : 'all';
@@ -107,15 +285,15 @@ import Base from '../layouts/Base.astro';
           ? 'All schools, sorted by what is due soonest.'
           : `${school} page, sorted by what is due soonest.`;
 
-      $('#feed').innerHTML = data.posts.length
-        ? data.posts.map(card).join('')
-        : empty('Nothing posted here yet.');
-
       if (offline) {
         $('#sort-note').textContent += ' (showing the copy saved on this phone — no connection)';
       } else if (fromCache) {
         $('#sort-note').textContent += ' (nothing changed since your last visit)';
       }
+
+      $('#feed').innerHTML = data.posts.length
+        ? data.posts.map((p) => socialCard(p, { icsHref: p.startsAt ? `${apiBase}/posts/${p.id}/calendar.ics` : null })).join('')
+        : empty('Nothing posted here yet.');
     }
 
     function syncScopeButtons() {
@@ -139,9 +317,12 @@ import Base from '../layouts/Base.astro';
       renderFeed();
     });
 
-    syncScopeButtons();
-    renderActivity();
-    renderDigest();
-    renderFeed();
+    if (user) {
+      greet();
+      syncScopeButtons();
+      renderActivity();
+      renderDigest();
+      renderFeed();
+    }
   </script>
 </Base>

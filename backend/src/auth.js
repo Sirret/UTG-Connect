@@ -11,6 +11,7 @@ export const publicUser = (u) =>
     name: u.name,
     username: u.username,
     role: u.role,
+    isSeller: !!u.is_seller,
     schoolId: u.school_id,
     schoolCode: u.school_code ?? null,
     bio: u.bio,
